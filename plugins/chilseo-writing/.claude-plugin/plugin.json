@@ -1,0 +1,16 @@
+{
+  "name": "chilseo-writing",
+  "version": "0.1.0",
+  "description": "웹 앱·수업 도구를 만들 때 쓰는 디자인·문구 스킬 4종(toss-writing, toss-design, krds-design, web-assets). 토스·KRDS의 공개 원칙을 참고한 비공식 가이드이며 토스 브랜드 자산은 담지 않는다.",
+  "author": {
+    "name": "Jongwook Yoo (칠서초등학교)"
+  },
+  "license": "MIT",
+  "keywords": [
+    "디자인",
+    "UX 라이팅",
+    "KRDS",
+    "웹 접근성",
+    "수업 도구"
+  ]
+}

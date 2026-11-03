@@ -1,0 +1,61 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "chilseo-plugins",
+  "description": "칠서초등학교 선생님들이 함께 쓰는 Claude 플러그인 묶음: 웹 앱 디자인·문구, 학교 계획서 한글(HWPX) 만들기",
+  "owner": {
+    "name": "Jongwook Yoo (칠서초등학교)"
+  },
+  "metadata": {
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "chilseo-writing",
+      "description": "웹 앱·수업 도구를 만들 때 쓰는 디자인·문구 스킬 4종: toss-writing(화면 문구·다크패턴 점검), toss-design(흐름·화면 디자인), krds-design(공공·학교 서식 화면), web-assets(저작권 확실한 글꼴·아이콘 넣기)",
+      "version": "0.1.0",
+      "author": {
+        "name": "Jongwook Yoo (칠서초등학교)"
+      },
+      "category": "design",
+      "source": "./plugins/chilseo-writing",
+      "keywords": [
+        "디자인",
+        "UX 라이팅",
+        "KRDS",
+        "수업 도구"
+      ]
+    },
+    {
+      "name": "chilseo-docs",
+      "description": "노션·대화에 쓴 계획서 원고를 학교 공용 한글(HWPX) 내부결재 양식으로 만들고 예산·요일·시간표를 스스로 검사하는 스킬",
+      "version": "0.1.0",
+      "author": {
+        "name": "Jongwook Yoo (칠서초등학교)"
+      },
+      "category": "documents",
+      "source": "./plugins/chilseo-docs",
+      "keywords": [
+        "한글",
+        "hwpx",
+        "계획서",
+        "내부결재"
+      ]
+    },
+    {
+      "name": "kordoc",
+      "description": "[함께 쓰면 좋은 것 · 다른 사람이 만든 플러그인(MIT)] 한글(HWP·HWPX) 문서 읽기·채우기·고치기·렌더. 원저장소 chrisryugj/kordoc를 그대로 가리킨다.",
+      "author": {
+        "name": "chrisryugj"
+      },
+      "category": "documents",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/chrisryugj/kordoc.git",
+        "path": "plugins/kordoc",
+        "ref": "main",
+        "sha": "6f9ef253cc66bb30c8b26fe87811d2c5832de995"
+      },
+      "homepage": "https://github.com/chrisryugj/kordoc"
+    }
+  ]
+}
