@@ -119,7 +119,7 @@ mark.confirm { background: var(--warn-bg); color: var(--warn); font-weight: 700;
   <section class="reply" id="reply" hidden aria-labelledby="replyHead">
     <h2 id="replyHead">회신서</h2>
     <p id="replyTitle"></p>
-    <p>종이 동의서에 학반과 이름, 보호자 연락처를 적고 서명해서 담임 선생님에게 내 주세요.</p>
+    <p>종이 동의서에 학년·반·이름을 적고, 참가 동의함이나 동의하지 않음에 표시한 뒤 학생과 보호자가 서명해서 담임 선생님에게 내 주세요.</p>
     <p class="pledge" id="pledge"></p>
     <div id="privacy"></div>
   </section>
@@ -171,8 +171,9 @@ N.items.forEach(i => {
 if (N.reply) {
   $('reply').hidden = false;
   put($('replyTitle'), N.reply.title);
-  put($('pledge'), N.reply.pledge || CONFIRM);
+  put($('pledge'), N.reply.pledge || '상기 내용을 확인하고 동의서를 제출합니다.');
   if (N.reply.privacy.length) N.reply.privacy.forEach(l => $('privacy').appendChild(make('p', l.trim(), 'note')));
+  if (N.reply.note) $('privacy').appendChild(make('p', N.reply.note.trim().startsWith('※') ? N.reply.note.trim() : '※ ' + N.reply.note.trim(), 'note'));
 }
 const now = new Date();
 $('issued').textContent = N.issue_date || (now.getFullYear() + '년 ' + (now.getMonth() + 1) + '월');

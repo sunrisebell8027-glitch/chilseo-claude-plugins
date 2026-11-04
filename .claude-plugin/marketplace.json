@@ -28,7 +28,7 @@
     {
       "name": "chilseo-docs",
       "description": "학교 문서 스킬 3종: school-plan-hwpx(계획서 원고 → 한글 내부결재 양식), school-gongmun-draft(기안문 종이 모양 화면·에듀파인 복사·예산 장부·검산), school-newsletter(가정통신문 한글 파일 + 보호자용 미리보기)",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "author": {
         "name": "Jongwook Yoo (칠서초등학교)"
       },

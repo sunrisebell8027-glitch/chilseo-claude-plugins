@@ -14,17 +14,28 @@ class NewsletterTests(unittest.TestCase):
   with zipfile.ZipFile(b.DEFAULT_TEMPLATE) as z:
    names=z.namelist();sec=z.read('Contents/section0.xml').decode();meta=z.read('Contents/content.hpf').decode()
   text=''.join(E.fromstring(sec.encode()).itertext())
-  for word in ('2026','055','협력','창원','5학년','gne.go.kr'):self.assertNotIn(word,text)
-  for m in ('{{TITLE}}','{{GREETING}}','{{ITEM}}','{{NOTE}}','{{PLEDGE}}','{{CONTACT}}'):self.assertIn(m,text)
-  self.assertEqual([n for n in names if n.startswith('BinData/')],['BinData/image2.png'])
+  for word in ('2026','055','미술관','이건희','5학년','gne.go.kr'):self.assertNotIn(word,text)
+  for m in ('{{TITLE}}','{{GREETING}}','{{ITEM_LABEL}}','{{ITEM_TEXT}}','{{NOTE}}','{{PLEDGE}}','{{TEL1}}','{{HOMEPAGE}}'):self.assertIn(m,text)
+  self.assertEqual([n for n in names if n.startswith('BinData/')],['BinData/image1.png'])
   self.assertNotIn('Preview/PrvImage.png',names);self.assertNotIn('USER',meta)
  def test_build_fills_every_marker(self):
   report=b.build(self.data,self.out)
   text=body(self.out)
   self.assertFalse(report['blocked']);self.assertNotIn('{{',text)
-  self.assertIn('1. 일시 : 2026. 12. 9.(수) 09:00~15:00',text);self.assertIn('6. 비용 : 없음',text)
+  self.assertIn('2026. 12. 9.(수) 09:00~15:00',text);self.assertIn('오후: 전통 놀이 체험',text)
   self.assertIn('※ 참가 동의서는 2026. 12. 2.(수)',text);self.assertIn('칠 서 초 등 학 교 장',text)
-  self.assertIn('칠서초 2026학년도',text);self.assertIn('칠서초등학교장 귀하',text)
+  self.assertIn('2026학년도',text);self.assertIn('참가 동의함',text);self.assertIn('※참가에 동의하지 않는 학생은',text)
+ def test_one_row_per_item_and_full_width_tables(self):
+  b.build(self.data,self.out)
+  with zipfile.ZipFile(self.out) as z:sec=E.fromstring(z.read('Contents/section0.xml'))
+  ns={'hp':'http://www.hancom.co.kr/hwpml/2011/paragraph'}
+  pg=sec.find('.//hp:pagePr',ns);m=pg.find('hp:margin',ns);width=int(pg.get('width'))-int(m.get('left'))-int(m.get('right'))
+  tables=[t for p in sec.findall('hp:p',ns) for t in p.findall('hp:run/hp:tbl',ns)]
+  for t in tables:
+   o=t.find('hp:outMargin',ns);self.assertEqual(int(t.find('hp:sz',ns).get('width'))+int(o.get('left'))+int(o.get('right')),width)
+  items=next(t for t in tables if '구분' in ''.join(t.itertext()))
+  self.assertEqual(int(items.get('rowCnt')),1+len(self.data['items']))
+  self.assertEqual([tr.find('hp:tc/hp:cellAddr',ns).get('rowAddr') for tr in items.findall('hp:tr',ns)],[str(i) for i in range(8)])
  def test_privacy_question_is_raised(self):
   confirm=b.build(self.data,self.out)['needs_confirmation']
   self.assertTrue(any('개인정보' in c for c in confirm))
@@ -38,7 +49,7 @@ class NewsletterTests(unittest.TestCase):
  def test_no_reply_drops_form(self):
   del self.data['reply'];self.data['summary'].pop('reply_by')
   b.build(self.data,self.out);text=body(self.out)
-  self.assertNotIn('동의서',text.split('칠 서 초 등 학 교 장')[1]);self.assertNotIn('보호자 성명',text)
+  self.assertNotIn('동의',text.split('칠 서 초 등 학 교 장')[1]);self.assertNotIn('서명',text)
  def test_weekday_mismatch_rejected(self):
   self.data['items'][0]['text']='2026. 12. 9.(목) 09:00~15:00'
   with self.assertRaisesRegex(ValueError,'Weekday'):b.validate(self.data)
@@ -55,7 +66,7 @@ class NewsletterTests(unittest.TestCase):
   b.preview(self.data,report['needs_confirmation'],page);html=page.read_text()
   self.assertIn('<title>박물관 체험학습 안내</title>',html);self.assertNotIn('__NOTICE_DATA__',html)
   data=json.loads(re.search(r'const N = (\{.*?\});\n',html,re.S).group(1))
-  self.assertEqual(data['summary']['reply_by'],'2026. 12. 2.(수)');self.assertEqual(len(data['confirm']),2)
+  self.assertEqual(data['summary']['reply_by'],'2026. 12. 2.(수)');self.assertEqual(len(data['confirm']),3)
  def test_example_has_no_personal_data(self):
   text=json.dumps(EXAMPLE,ensure_ascii=False)
   self.assertIsNone(re.search(r'\d{2,3}-\d{3,4}-\d{4}',text));self.assertNotRegex(text,r'\d+명')

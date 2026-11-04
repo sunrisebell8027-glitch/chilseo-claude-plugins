@@ -3,9 +3,9 @@
 
     python3 build_newsletter.py 통신문.json -o 결과/가정통신문.hwpx --preview 결과/미리보기.html
 
-The template keeps the school masthead and holds {{MARKER}} paragraphs that
-are copied once per greeting, item and note. A reply form is kept only when
-the JSON has `reply`.
+The template is the school's approved 가정통신문 with {{MARKER}} texts: the
+greeting and note paragraphs are copied once per entry and the 구분/내용 table
+gets one row per item. The consent form is kept only when the JSON has `reply`.
 """
 from __future__ import annotations
 import argparse, copy, datetime, hashlib, html, json, re, subprocess, sys, zipfile
@@ -19,6 +19,7 @@ NS = {'hp': 'http://www.hancom.co.kr/hwpml/2011/paragraph', 'opf': 'http://www.i
 T = '{%s}t' % NS['hp']
 DOW = '월화수목금토일'
 CONFIRM = '[확인 필요]'
+LINE_EXTRA = 1883  # 한 줄 더 쓸 때 늘어나는 칸 높이: 승인된 양식의 두 줄 칸(4448) - 한 줄 칸(2565)
 DATE = re.compile(r'(?<!\d)(?:(\d{4})\.\s*)?(\d{1,2})\.\s*(\d{1,2})\.\s*\(([월화수목금토일])\)')
 
 def resolve_template(name=None, base=None):
@@ -44,7 +45,7 @@ def strings(data):
     s = data.get('summary') or {}
     out += [s.get('when', ''), s.get('reply_by', ''), *s.get('bring', [])]
     r = data.get('reply') or {}
-    out += [r.get('title', ''), r.get('program', ''), r.get('pledge', '')]
+    out += [r.get('title', ''), r.get('pledge', ''), r.get('note', '')]
     return [x for x in out if x]
 
 def privacy_lines(reply):
@@ -79,10 +80,13 @@ def validate(data, masthead=None):
             raise ValueError('Reply deadline must come before the event')
         include = (reply.get('privacy') or {}).get('include')
         if include is None:
-            confirm.append('회신서에 보호자 이름·연락처를 받아요. 개인정보 수집·이용 동의 문구를 넣을지 정해 주세요.')
+            confirm.append('동의서에 학생·보호자 이름과 서명을 받아요. 개인정보 수집·이용 동의 문구를 넣을지 정해 주세요.')
         elif include is True:
             confirm += [f'개인정보 안내의 {k} 칸' for k in ('items', 'purpose', 'retention', 'refusal')
                         if not (reply['privacy'].get(k))]
+    m = data.get('masthead') or {}
+    if len(m.get('phones') or []) < 2 or not m.get('homepage'):
+        confirm.append('머리말의 교무실·행정실 전화번호와 누리집 주소를 학교설정에서 채워 주세요.')
     n = json.dumps(data, ensure_ascii=False).count(CONFIRM)
     if n: confirm.append(f'{CONFIRM}로 둔 {n}곳을 채워 주세요.')
     return confirm
@@ -91,7 +95,7 @@ def build(data, target, base=None):
     template = resolve_template(data.get('template'), base)
     with zipfile.ZipFile(template) as z: parts = {i.filename: z.read(i.filename) for i in z.infolist()}
     sec = E.fromstring(parts['Contents/section0.xml'])
-    masthead = ''.join(list(sec)[1].itertext())
+    masthead = ''.join(list(sec)[0].itertext())
     confirm = validate(data, masthead)
     today = datetime.date.fromisoformat(data['doc_date']) if data.get('doc_date') else datetime.date.today()
     school = data['school']
@@ -116,13 +120,50 @@ def build(data, target, base=None):
             parent.insert(at + 1 + i, q)
         parent.remove(p)
 
-    fill('{{LABEL}}', data.get('label', ''))
-    short = re.sub(r'(초|중|고)(등)?학교$', r'\1', school)  # 칠서초등학교 -> 칠서초, to fit the narrow cell
-    repeat('{{CONTACT}}', data.get('contact') or [f'{short} {today.year}학년도'])
+    def item_rows(items):
+        """One 구분/내용 row per item, in the template's first/middle/last row styles.
+
+        A text with line breaks becomes one paragraph per line and the row grows
+        by LINE_EXTRA per extra line (the approved form's two-line row).
+        """
+        styles = []
+        for t in sec.iter(T):
+            if t.text and '{{ITEM_LABEL}}' in t.text:
+                row = t.getparent()
+                while E.QName(row).localname != 'tr': row = row.getparent()
+                styles.append(row)
+        tbl = styles[0].getparent(); at = tbl.index(styles[0]); first = tbl.findall('hp:tr', NS).index(styles[0])
+        last = len(items) - 1
+        for n, item in enumerate(items):
+            r = copy.deepcopy(styles[0] if n == 0 else styles[-1] if n == last else styles[1])
+            for a in r.iter('{%s}cellAddr' % NS['hp']): a.set('rowAddr', str(first + n))
+            for t in r.iter(T):
+                if t.text and '{{ITEM_LABEL}}' in t.text: t.text = t.text.replace('{{ITEM_LABEL}}', item.get('label', ''))
+            t = next(t for t in r.iter(T) if t.text and '{{ITEM_TEXT}}' in t.text); p = para_of(t)
+            lines = item['text'].split('\n')
+            for line in lines:
+                q = copy.deepcopy(p)
+                for tt in q.iter(T):
+                    if tt.text and '{{ITEM_TEXT}}' in tt.text: tt.text = tt.text.replace('{{ITEM_TEXT}}', line)
+                p.addprevious(q)
+            p.getparent().remove(p)
+            for sz in r.iter('{%s}cellSz' % NS['hp']): sz.set('height', str(int(sz.get('height')) + LINE_EXTRA * (len(lines) - 1)))
+            tbl.insert(at + n, r)
+        for row in styles: tbl.remove(row)
+        tbl.set('rowCnt', str(first + len(items)))
+        heights = [int(tr.find('hp:tc/hp:cellSz', NS).get('height')) for tr in tbl.findall('hp:tr', NS)]
+        tbl.find('hp:sz', NS).set('height', str(sum(heights)))
+
+    m = data.get('masthead') or {}
+    phones = (m.get('phones') or []) + [CONFIRM, CONFIRM]
+    school_year = today.year if today.month >= 3 else today.year - 1
+    fill('{{SHORT}}', re.sub(r'(초|중|고)(등)?학교$', r'\1', school))  # 칠서초등학교 -> 칠서초, to fit the narrow cell
+    fill('{{YEAR}}', str(school_year))
+    fill('{{TEL1}}', phones[0]); fill('{{TEL2}}', phones[1]); fill('{{HOMEPAGE}}', m.get('homepage') or CONFIRM)
     fill('{{TITLE}}', data['title'])
     repeat('{{GREETING}}', data.get('greeting') or [])
-    repeat('{{ITEM}}', [f'{n}. {i["label"]} : {i["text"]}' if i.get('label') else f'{n}. {i["text"]}'
-                        for n, i in enumerate(data['items'], 1)])
+    fill('{{ITEMS_HEAD}}', data.get('items_title') or '< 안내 내용 >')
+    item_rows(data['items'])
     repeat('{{NOTE}}', [x if x.lstrip().startswith('※') else '※ ' + x for x in data.get('notes') or []])
     fill('{{DATE}}', data.get('issue_date') or f'{today.year}년 {today.month}월    일')
     head_p = para_of(holder('{{HEAD}}'))
@@ -130,10 +171,9 @@ def build(data, target, base=None):
     reply = data.get('reply')
     if reply:
         fill('{{REPLY_TITLE}}', reply.get('title') or f'『{data["title"]}』 참가 동의서')
-        fill('{{PROGRAM}}', reply.get('program') or data['title'])
-        fill('{{REPLY_DATE}}', f'{today.year}년    월    일')
-        repeat('{{PLEDGE}}', [reply.get('pledge') or CONFIRM] + privacy_lines(reply))
-        fill('{{TO}}', f'{school}장 귀하  ')
+        repeat('{{PLEDGE}}', [reply.get('pledge') or '상기 내용을 확인하고 동의서를 제출합니다.'] + privacy_lines(reply))
+        note = reply.get('note')
+        repeat('{{REPLY_NOTE}}', [note if note.lstrip().startswith('※') else '※' + note] if note else [])
     else:
         body = list(sec)
         for p in body[body.index(head_p) + 1:]: sec.remove(p)
@@ -167,7 +207,7 @@ def build(data, target, base=None):
 def preview(data, confirm, target):
     page = {k: data.get(k) for k in ('school', 'title', 'greeting', 'items', 'notes', 'summary', 'issue_date', 'example')}
     reply = data.get('reply')
-    page['reply'] = reply and {'title': reply.get('title') or f'『{data["title"]}』 참가 동의서', 'pledge': reply.get('pledge'),
+    page['reply'] = reply and {'title': reply.get('title') or f'『{data["title"]}』 참가 동의서', 'pledge': reply.get('pledge'), 'note': reply.get('note'),
                                'privacy': privacy_lines(reply), 'privacy_include': (reply.get('privacy') or {}).get('include')}
     page['confirm'] = confirm
     payload = json.dumps(page, ensure_ascii=False).replace('</', '<\\/')
