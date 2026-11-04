@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: newsletter-field-trip-with-reply
+expected_outcome: |
+  칠서초 양식의 가정통신문 HWPX와 보호자용 미리보기 HTML이 만들어진다. 미리보기 맨 위에 날짜·준비물·회신 기한이 있고, 개인정보 수집·이용 문구를 넣을지 묻는다(또는 [확인 필요]로 표시). 장소처럼 원고에 없는 값은 지어내지 않는다.

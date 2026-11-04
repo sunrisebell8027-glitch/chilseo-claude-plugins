@@ -4,7 +4,7 @@ import sys, zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_DIRS = {'__pycache__', '.venv', 'tests'}
+SKIP_DIRS = {'__pycache__', '.venv', 'tests', 'evals'}
 SKIP_FILES = {'.DS_Store'}
 
 

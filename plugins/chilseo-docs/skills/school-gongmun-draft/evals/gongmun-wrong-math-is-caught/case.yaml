@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: gongmun-wrong-math-is-caught
+expected_outcome: |
+  2,000원*70명은 140,000원이라 곱셈 검산(C1)과 합계에서 막히고, 어느 숫자가 맞는지 선생님께 묻는다. 틀린 채로 화면을 넘기지 않는다.

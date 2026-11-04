@@ -1,12 +1,12 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "chilseo-plugins",
-  "description": "칠서초등학교 선생님들이 함께 쓰는 Claude 플러그인 묶음: 웹 앱 디자인·문구, 학교 계획서 한글(HWPX) 만들기",
+  "description": "칠서초등학교 선생님들이 함께 쓰는 Claude 플러그인 묶음: 웹 앱 디자인·문구, 학교 계획서·기안문·가정통신문 만들기",
   "owner": {
     "name": "Jongwook Yoo (칠서초등학교)"
   },
   "metadata": {
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {
@@ -27,8 +27,8 @@
     },
     {
       "name": "chilseo-docs",
-      "description": "노션·대화에 쓴 계획서 원고를 학교 공용 한글(HWPX) 내부결재 양식으로 만들고 예산·요일·시간표를 스스로 검사하는 스킬",
-      "version": "0.1.0",
+      "description": "학교 문서 스킬 3종: school-plan-hwpx(계획서 원고 → 한글 내부결재 양식), school-gongmun-draft(기안문 종이 모양 화면·에듀파인 복사·예산 장부·검산), school-newsletter(가정통신문 한글 파일 + 보호자용 미리보기)",
+      "version": "0.2.0",
       "author": {
         "name": "Jongwook Yoo (칠서초등학교)"
       },
@@ -38,7 +38,9 @@
         "한글",
         "hwpx",
         "계획서",
-        "내부결재"
+        "내부결재",
+        "기안문",
+        "가정통신문"
       ]
     },
     {

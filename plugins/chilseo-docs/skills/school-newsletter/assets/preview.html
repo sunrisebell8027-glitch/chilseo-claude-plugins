@@ -1,0 +1,192 @@
+<title>__PAGE_TITLE__</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap">
+<style>
+/* 배치: 휴대폰 한 손 읽기 기준의 한 단. 맨 위에 날짜·준비물·회신 기한, 그 아래 안내 전문과 회신서 */
+:root {
+  --bg: #f4f5f6;
+  --surface: #ffffff;
+  --ink: #1e2124;
+  --ink-soft: #464c53;
+  --line: #cdd1d5;
+  --primary: #1d5fd6;
+  --primary-ink: #ffffff;
+  --primary-strong: #0b48b0;
+  --key-bg: #ecf2fe;
+  --warn: #7a4a00;
+  --warn-bg: #fff3db;
+  --warn-line: #e0a63a;
+  --font: "Noto Sans KR", "Pretendard GOV", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --scale: 1;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131416; --surface: #1e2124; --ink: #f1f2f3; --ink-soft: #b9bfc5; --line: #464c53;
+    --primary: #7aa7f7; --primary-ink: #0b1a33; --primary-strong: #a3c2fa; --key-bg: #1a2a45;
+    --warn: #f3c164; --warn-bg: #3a2c12; --warn-line: #9a6b1c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131416; --surface: #1e2124; --ink: #f1f2f3; --ink-soft: #b9bfc5; --line: #464c53;
+  --primary: #7aa7f7; --primary-ink: #0b1a33; --primary-strong: #a3c2fa; --key-bg: #1a2a45;
+  --warn: #f3c164; --warn-bg: #3a2c12; --warn-line: #9a6b1c;
+  color-scheme: dark;
+}
+:root.large { --scale: 1.25; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font);
+  font-size: calc(19px * var(--scale)); line-height: 1.7; word-break: keep-all; overflow-wrap: anywhere;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+}
+.page { max-width: 720px; margin: 0 auto; display: grid; gap: 24px; }
+.eyebrow { margin: 0; font-size: .8em; color: var(--ink-soft); font-weight: 600; }
+h1 { margin: 4px 0 0; font-size: 1.6em; line-height: 1.35; text-wrap: balance; }
+.sub { margin: 8px 0 0; color: var(--ink-soft); font-size: .85em; }
+.tag { display: inline-block; margin-left: 8px; padding: 0 8px; border: 1px solid var(--line); border-radius: 4px; font-size: .8em; }
+.size { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: .85em; }
+.size span { color: var(--ink-soft); margin-right: 4px; }
+.size button {
+  font: inherit; min-height: 44px; min-width: 64px; padding: 4px 16px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); transition: transform .15s ease;
+}
+.size button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); font-weight: 600; }
+.size button:hover { border-color: var(--primary); }
+.size button:active { transform: scale(.98); }
+button:focus-visible { outline: 3px solid var(--primary-strong); outline-offset: 2px; }
+section { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 24px; min-width: 0; }
+@media (max-width: 480px) { section { padding: 20px 16px; } }
+h2 { margin: 0 0 16px; font-size: 1.1em; }
+.teacher { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
+.teacher h2 { color: var(--warn); }
+.teacher ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+.key { background: var(--key-bg); border-color: var(--primary); }
+.facts { margin: 0; display: grid; gap: 16px; }
+.facts div { display: grid; gap: 4px; }
+.facts dt { font-size: .85em; font-weight: 600; color: var(--ink-soft); }
+.facts dd { margin: 0; font-size: 1.15em; font-weight: 700; }
+.bring { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.bring li { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 2px 14px; font-size: .9em; font-weight: 600; }
+.letter p { margin: 0 0 16px; text-wrap: pretty; }
+.items { margin: 0 0 16px; display: grid; gap: 8px; }
+.items div { display: grid; grid-template-columns: 5em minmax(0, 1fr); gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.items dt { font-weight: 600; color: var(--ink-soft); }
+.items dd { margin: 0; }
+.note { color: var(--ink-soft); font-size: .9em; }
+.reply p { margin: 0 0 12px; }
+.pledge { border-left: 4px solid var(--line); padding-left: 12px; color: var(--ink-soft); }
+.from { text-align: center; display: grid; gap: 4px; font-weight: 600; }
+.from span:first-child { font-weight: 400; color: var(--ink-soft); }
+mark.confirm { background: var(--warn-bg); color: var(--warn); font-weight: 700; padding: 0 4px; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<main class="page">
+  <header>
+    <p class="eyebrow" id="eyebrow"></p>
+    <h1 id="title"></h1>
+    <p class="sub" id="sub"></p>
+  </header>
+
+  <div class="size" role="group" aria-label="글자 크기">
+    <span>글자 크기</span>
+    <button type="button" id="sizeNormal" aria-pressed="true">보통</button>
+    <button type="button" id="sizeLarge" aria-pressed="false">크게</button>
+  </div>
+
+  <section class="teacher" id="teacher" hidden aria-labelledby="teacherHead">
+    <h2 id="teacherHead">보내기 전에 선생님이 정할 것</h2>
+    <ul id="confirm"></ul>
+  </section>
+
+  <section class="key" aria-labelledby="keyHead">
+    <h2 id="keyHead">한눈에 보기</h2>
+    <dl class="facts" id="facts"></dl>
+  </section>
+
+  <section class="letter" aria-labelledby="letterHead">
+    <h2 id="letterHead">안내</h2>
+    <div id="greeting"></div>
+    <dl class="items" id="items"></dl>
+    <div id="notes"></div>
+  </section>
+
+  <section class="reply" id="reply" hidden aria-labelledby="replyHead">
+    <h2 id="replyHead">회신서</h2>
+    <p id="replyTitle"></p>
+    <p>종이 동의서에 학반과 이름, 보호자 연락처를 적고 서명해서 담임 선생님에게 내 주세요.</p>
+    <p class="pledge" id="pledge"></p>
+    <div id="privacy"></div>
+  </section>
+
+  <footer class="from">
+    <span id="issued"></span>
+    <span id="head"></span>
+  </footer>
+</main>
+
+<script>
+const N = "__NOTICE_DATA__";
+const $ = id => document.getElementById(id);
+const CONFIRM = '[확인 필요]';
+function put(node, text) {
+  text.split(CONFIRM).forEach((part, i) => {
+    if (i) { const m = document.createElement('mark'); m.className = 'confirm'; m.textContent = CONFIRM; node.appendChild(m); }
+    node.appendChild(document.createTextNode(part));
+  });
+  return node;
+}
+const make = (tag, text, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) put(e, text); return e; };
+
+$('eyebrow').textContent = '가정통신문 · ' + N.school;
+put($('title'), N.title);
+$('sub').textContent = '보호자용 미리보기';
+if (N.example) $('sub').appendChild(make('span', '예시 자료', 'tag'));
+
+if (N.confirm.length) { $('teacher').hidden = false; N.confirm.forEach(c => $('confirm').appendChild(make('li', c))); }
+
+const S = N.summary;
+function fact(label, value) {
+  const d = document.createElement('div'); d.appendChild(make('dt', label));
+  const dd = document.createElement('dd'); typeof value === 'string' ? put(dd, value) : dd.appendChild(value); d.appendChild(dd);
+  $('facts').appendChild(d);
+}
+fact('날짜', S.when);
+if (S.bring && S.bring.length) { const ul = make('ul', null, 'bring'); S.bring.forEach(b => ul.appendChild(make('li', b))); fact('준비물', ul); }
+if (S.reply_by) fact('회신 기한', S.reply_by + '까지 담임 선생님에게');
+
+(N.greeting || []).forEach(g => $('greeting').appendChild(make('p', g.trim())));
+N.items.forEach(i => {
+  const d = document.createElement('div');
+  d.appendChild(make('dt', i.label || '')); d.appendChild(make('dd', i.text));
+  $('items').appendChild(d);
+});
+(N.notes || []).forEach(n => $('notes').appendChild(make('p', n.trim().startsWith('※') ? n.trim() : '※ ' + n.trim(), 'note')));
+
+if (N.reply) {
+  $('reply').hidden = false;
+  put($('replyTitle'), N.reply.title);
+  put($('pledge'), N.reply.pledge || CONFIRM);
+  if (N.reply.privacy.length) N.reply.privacy.forEach(l => $('privacy').appendChild(make('p', l.trim(), 'note')));
+}
+const now = new Date();
+$('issued').textContent = N.issue_date || (now.getFullYear() + '년 ' + (now.getMonth() + 1) + '월');
+$('head').textContent = N.school + '장';
+
+// 글자 크기는 이 기기에만 기억한다
+const root = document.documentElement;
+function setSize(large) {
+  root.classList.toggle('large', large);
+  $('sizeNormal').setAttribute('aria-pressed', String(!large));
+  $('sizeLarge').setAttribute('aria-pressed', String(large));
+  try { localStorage.setItem('notice-size', large ? 'large' : 'normal'); } catch (e) {}
+}
+$('sizeNormal').addEventListener('click', () => setSize(false));
+$('sizeLarge').addEventListener('click', () => setSize(true));
+try { if (localStorage.getItem('notice-size') === 'large') setSize(true); } catch (e) {}
+</script>

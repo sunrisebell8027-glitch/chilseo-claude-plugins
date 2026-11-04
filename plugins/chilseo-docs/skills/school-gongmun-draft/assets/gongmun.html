@@ -1,0 +1,275 @@
+<title>__PAGE_TITLE__</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* 배치: 가운데에 결재 문서 한 장(종이), 옆에 복사·예산 장부·검사 결과 — 좁은 화면에서는 위아래로 쌓는다 */
+:root {
+  --desk: #eef0f3;
+  --paper: #ffffff;
+  --ink: #1d2430;
+  --ink-soft: #566070;
+  --rule: #c9ced6;
+  --accent: #22406b;
+  --accent-ink: #ffffff;
+  --accent-hover: #1a3256;
+  --mark: #b8322a;
+  --ok: #276b43;
+  --ok-bg: #e5f2ea;
+  --warn: #8a5508;
+  --warn-bg: #fbf1df;
+  --bad: #a3261e;
+  --bad-bg: #fbe6e4;
+  --panel: #f6f7f9;
+  --font-doc: "Noto Serif KR", "Batang", "AppleMyungjo", serif;
+  --font-ui: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  --shadow: 0 1px 2px rgba(20,30,50,.08), 0 8px 24px rgba(20,30,50,.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #14181e; --paper: #1d232c; --ink: #e6e9ee; --ink-soft: #a0a9b6; --rule: #3a434f;
+    --accent: #8fb0e0; --accent-ink: #10213a; --accent-hover: #a9c3ea; --mark: #e0675e;
+    --ok: #6cc28f; --ok-bg: #1d3427; --warn: #e3a447; --warn-bg: #3a2e1a; --bad: #f08a80; --bad-bg: #3d1f1c;
+    --panel: #1a2028; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --desk: #14181e; --paper: #1d232c; --ink: #e6e9ee; --ink-soft: #a0a9b6; --rule: #3a434f;
+  --accent: #8fb0e0; --accent-ink: #10213a; --accent-hover: #a9c3ea; --mark: #e0675e;
+  --ok: #6cc28f; --ok-bg: #1d3427; --warn: #e3a447; --warn-bg: #3a2e1a; --bad: #f08a80; --bad-bg: #3d1f1c;
+  --panel: #1a2028; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--desk); color: var(--ink); font-family: var(--font-ui); font-size: 16px; line-height: 1.6;
+  word-break: keep-all; overflow-wrap: anywhere;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 48px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 24px; }
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+header.top h1 { margin: 0; font-size: 1.375rem; font-weight: 600; text-wrap: balance; }
+header.top p { margin: 4px 0 0; color: var(--ink-soft); font-size: .875rem; }
+.status { display: inline-flex; align-items: center; gap: 8px; font-size: .875rem; font-weight: 600; padding: 4px 12px; border-radius: 999px; }
+.status.ok { background: var(--ok-bg); color: var(--ok); }
+.status.warn { background: var(--warn-bg); color: var(--warn); }
+.status.fail { background: var(--bad-bg); color: var(--bad); }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* 종이 문서 */
+.sheet { background: var(--paper); box-shadow: var(--shadow); padding: 40px 48px 32px; font-family: var(--font-doc); min-width: 0; }
+@media (max-width: 560px) { .sheet { padding: 24px 16px; } }
+.slogan { text-align: center; color: var(--ink-soft); font-size: .875rem; letter-spacing: .08em; min-height: 1em; }
+.org { text-align: center; font-size: 1.75rem; font-weight: 700; letter-spacing: .3em; margin: 8px 0 24px; padding-left: .3em; }
+.meta { display: grid; grid-template-columns: 4.2em minmax(0, 1fr); row-gap: 4px; border-bottom: 2px solid var(--ink); padding-bottom: 12px; margin: 0; }
+.meta dt { font-weight: 700; }
+.meta dd { margin: 0; }
+.meta dd.title { font-weight: 700; }
+.body { padding-top: 16px; font-size: 1rem; line-height: 1.9; font-variant-numeric: tabular-nums; }
+/* 번호와 내용을 한 줄 글자로 두고 내어쓰기만 CSS로 한다 → 끌어서 복사해도 "가. 내용"이 한 줄로 붙는다 */
+.body .ln { padding-left: var(--hang); text-indent: calc(-1 * var(--num)); }
+.body .l0 { --num: 1.6em; --hang: 1.6em; }
+.body .l1 { --num: 2em; --hang: 3.6em; }
+.body .l2 { --num: 1.8em; --hang: 5.4em; }
+.body .l3 { --num: 2em; --hang: 7.4em; }
+.body .l4 { --num: 2.4em; --hang: 9.8em; }
+.body .att { margin-top: 12px; white-space: pre-wrap; }
+.body .att + .att { margin-top: 0; }
+.confirm { background: var(--warn-bg); color: var(--warn); font-family: var(--font-ui); font-size: .875em; font-weight: 600; padding: 0 4px; border-radius: 3px; }
+.sign { margin-top: 32px; border-top: 1px solid var(--rule); padding-top: 16px; font-family: var(--font-ui); font-size: .875rem; }
+.signline { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.signline b { font-weight: 600; margin-left: 4px; }
+.star { color: var(--mark); }
+.foot { margin-top: 12px; color: var(--ink-soft); font-size: .8125rem; line-height: 1.5; }
+
+/* 옆 칸 */
+aside { display: grid; gap: 16px; min-width: 0; }
+.card { background: var(--paper); border: 1px solid var(--rule); padding: 20px; min-width: 0; }
+.card h2 { margin: 0 0 12px; font-size: .8125rem; font-weight: 600; letter-spacing: .06em; color: var(--ink-soft); }
+.card h3 { margin: 16px 0 4px; font-size: .9375rem; font-weight: 600; }
+.card h3:first-of-type { margin-top: 0; }
+.hint { margin: 12px 0 0; font-size: .8125rem; color: var(--ink-soft); }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+button.copy { font: inherit; font-size: .9375rem; font-weight: 500; min-height: 44px; padding: 8px 16px; border-radius: 4px; cursor: pointer;
+  color: var(--accent-ink); background: var(--accent); border: 1px solid var(--accent); transition: transform .15s ease, opacity .15s ease; }
+button.copy.alt { color: var(--accent); background: transparent; }
+button.copy:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-ink); }
+button.copy:active { transform: scale(.98); }
+button.copy:focus-visible { outline: 2px solid var(--mark); outline-offset: 2px; }
+.toast { min-height: 1.5em; margin-top: 8px; font-size: .875rem; color: var(--ok); }
+.ledger { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: .875rem; }
+.ledger td { padding: 4px 0; border-bottom: 1px dashed var(--rule); vertical-align: top; }
+.ledger td:last-child { text-align: right; white-space: nowrap; padding-left: 8px; }
+.ledger tr.total td { border-bottom: 0; font-weight: 600; padding-top: 8px; }
+.bar { height: 10px; background: var(--panel); border: 1px solid var(--rule); margin: 8px 0 4px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 100%; background: var(--accent); transform: translateX(-100%); transition: transform .3s ease; }
+.bar.over i { background: var(--bad); }
+.bar-cap { display: flex; justify-content: space-between; font-size: .8125rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.sum { margin-top: 16px; padding-top: 12px; border-top: 2px solid var(--ink); display: flex; justify-content: space-between; font-weight: 600; font-variant-numeric: tabular-nums; }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: .875rem; }
+.checks li { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 8px; align-items: start; }
+.chip { font-size: .75rem; font-weight: 600; text-align: center; padding: 2px 4px; border-radius: 3px; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.fail { background: var(--bad-bg); color: var(--bad); }
+.checks b { font-weight: 600; margin-right: 4px; }
+.todo { margin: 0; padding-left: 1.1em; font-size: .875rem; display: grid; gap: 8px; }
+.links { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: .875rem; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--mark); outline-offset: 2px; }
+textarea.clip { position: absolute; left: -9999px; width: 1px; height: 1px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1 id="pageTitle"></h1>
+      <p id="pageMeta"></p>
+    </div>
+    <span class="status" id="status"></span>
+  </header>
+
+  <div class="grid">
+    <article class="sheet" aria-label="시행문 본문">
+      <div class="slogan" id="slogan"></div>
+      <div class="org" id="org"></div>
+      <dl class="meta">
+        <dt>수신</dt><dd id="receiver"></dd>
+        <dt>(경유)</dt><dd id="via"></dd>
+        <dt>제목</dt><dd class="title" id="docTitle"></dd>
+      </dl>
+      <div class="body" id="body"></div>
+      <div class="sign">
+        <div class="signline" id="signline"></div>
+        <div class="foot" id="foot"></div>
+      </div>
+    </article>
+
+    <aside>
+      <section class="card" aria-labelledby="copyHead">
+        <h2 id="copyHead">에듀파인에 붙여 넣기</h2>
+        <div class="buttons">
+          <button class="copy alt" id="copyTitle" type="button">제목 복사하기</button>
+          <button class="copy" id="copyBody" type="button">본문 복사하기</button>
+        </div>
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+        <p class="hint">제목은 제목 칸에, 본문은 본문 칸에 붙여 넣어요. 본문은 「1.」부터 「끝.」까지 번호와 내용이 한 줄로 들어가요.</p>
+      </section>
+
+      <section class="card" id="ledgerCard" hidden aria-labelledby="ledgerHead">
+        <h2 id="ledgerHead">예산 장부</h2>
+        <div id="ledger"></div>
+      </section>
+
+      <section class="card" aria-labelledby="checkHead">
+        <h2 id="checkHead">검사 결과</h2>
+        <ul class="checks" id="checks"></ul>
+      </section>
+
+      <section class="card" id="todoCard" hidden aria-labelledby="todoHead">
+        <h2 id="todoHead">상정 전에 볼 것</h2>
+        <ul class="todo" id="todo"></ul>
+      </section>
+
+      <section class="card" id="linkCard" hidden aria-labelledby="linkHead">
+        <h2 id="linkHead">함께 볼 자료</h2>
+        <ul class="links" id="links"></ul>
+      </section>
+    </aside>
+  </div>
+</div>
+<textarea class="clip" id="clip" aria-hidden="true" tabindex="-1"></textarea>
+
+<script>
+const D = "__DRAFT_DATA__";
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const money = n => n.toLocaleString('ko-KR') + '원';
+const CONFIRM = '[확인 필요]';
+// [확인 필요]가 들어간 글은 그 부분만 표시해 눈에 띄게 한다
+function withConfirm(node, text) {
+  text.split(CONFIRM).forEach((part, i) => {
+    if (i) node.appendChild(el('mark', 'confirm', CONFIRM));
+    node.appendChild(document.createTextNode(part));
+  });
+  return node;
+}
+const STATUS = { ok: '검사를 통과했어요', warn: '확인할 곳이 있어요', fail: '고칠 곳이 있어요' };
+const CHIP = { ok: '통과', warn: '확인', fail: '고침' };
+const left = D.checks.filter(c => c.status !== 'ok').length;
+
+$('pageTitle').textContent = D.title;
+$('pageMeta').textContent = [D.kind, D.written && ('작성 ' + D.written.replace(/-0?/g, '. ') + '.'), D.example && '예시 자료(지어낸 내용)'].filter(Boolean).join(' · ');
+const st = $('status'); st.className = 'status ' + D.status; st.textContent = STATUS[D.status] + (left ? ' · ' + left + '건' : '');
+$('slogan').textContent = D.slogan; $('org').textContent = D.school;
+$('receiver').textContent = D.receiver; $('via').textContent = D.via;
+withConfirm($('docTitle'), D.title);
+D.lines.forEach(l => $('body').appendChild(withConfirm(el('div', l.depth < 0 ? 'att' : 'ln l' + l.depth), l.text)));
+
+D.approval.forEach((a, i) => {
+  const s = el('span');
+  if (i === 0) s.appendChild(el('span', 'star', '★'));
+  s.appendChild(document.createTextNode(a.role));
+  if (a.name) s.appendChild(el('b', null, a.name));
+  $('signline').appendChild(s);
+});
+D.cooperation.forEach(a => { const s = el('span', null, '협조자 ' + a.role); if (a.name) s.appendChild(el('b', null, a.name)); $('signline').appendChild(s); });
+const F = D.footer;
+$('foot').textContent = [F.doc_no != null && ('시행 ' + D.school + '-' + (F.doc_no || '(  )')), F.address, F.phone && ('전화 ' + F.phone), F.fax && ('전송 ' + F.fax), F.disclosure].filter(Boolean).join(' · ');
+
+if (D.ledger.length) {
+  $('ledgerCard').hidden = false;
+  let total = 0;
+  D.ledger.forEach(g => {
+    const spent = g.spend.reduce((s, x) => s + x.amount, 0); total += spent;
+    const pct = g.allocated ? spent / g.allocated * 100 : 0;
+    $('ledger').appendChild(el('h3', null, g.name));
+    const t = el('table', 'ledger');
+    const row = (a, b, cls) => { const tr = el('tr', cls); tr.appendChild(el('td', null, a)); tr.appendChild(el('td', null, b)); t.appendChild(tr); };
+    row('편성액' + (g.basis ? ' ' + g.basis : ''), money(g.allocated));
+    g.spend.forEach(x => row(x.name, '−' + money(x.amount)));
+    row('집행 후 잔액', money(g.allocated - spent), 'total');
+    $('ledger').appendChild(t);
+    const bar = el('div', 'bar' + (pct > 100 ? ' over' : ''));
+    bar.setAttribute('role', 'img'); bar.setAttribute('aria-label', g.name + ' ' + money(g.allocated) + ' 가운데 ' + money(spent) + ' 집행');
+    const fill = el('i'); bar.appendChild(fill); $('ledger').appendChild(bar);
+    requestAnimationFrame(() => { fill.style.transform = 'translateX(' + (Math.min(pct, 100) - 100) + '%)'; });
+    const cap = el('div', 'bar-cap'); cap.appendChild(el('span', null, '집행 ' + Math.round(pct) + '%')); cap.appendChild(el('span', null, money(spent)));
+    $('ledger').appendChild(cap);
+    if (g.basis_doc) $('ledger').appendChild(withConfirm(el('p', 'hint'), '근거 ' + g.basis_doc));
+  });
+  const sum = el('div', 'sum'); sum.appendChild(el('span', null, '이번 집행 합계')); sum.appendChild(el('span', null, money(total)));
+  $('ledger').appendChild(sum);
+}
+
+D.checks.forEach(c => {
+  const li = el('li'); li.appendChild(el('span', 'chip ' + c.status, CHIP[c.status] + ' ' + c.id));
+  const s = el('span'); s.appendChild(el('b', null, c.label)); withConfirm(s, c.detail); li.appendChild(s);
+  $('checks').appendChild(li);
+});
+if (D.todo.length) { $('todoCard').hidden = false; D.todo.forEach(t => $('todo').appendChild(withConfirm(el('li'), t))); }
+if (D.links.length) {
+  $('linkCard').hidden = false;
+  D.links.forEach(l => { const li = el('li'); const a = el('a', null, l.label); a.href = l.url; a.target = '_blank'; a.rel = 'noopener'; li.appendChild(a); $('links').appendChild(li); });
+}
+
+const toast = $('toast');
+function copy(text, label) {
+  const done = () => { toast.textContent = label + '을 복사했어요'; };
+  const fallback = () => {
+    const ta = $('clip'); ta.value = text; ta.select();
+    try { document.execCommand('copy') ? done() : manual(); } catch (e) { manual(); }
+  };
+  const manual = () => { toast.textContent = '왼쪽 문서에서 글을 끌어 골라 복사해 주세요'; };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+  else fallback();
+}
+$('copyTitle').addEventListener('click', () => copy(D.title, '제목'));
+$('copyBody').addEventListener('click', () => copy(D.copy_body, '본문'));
+</script>

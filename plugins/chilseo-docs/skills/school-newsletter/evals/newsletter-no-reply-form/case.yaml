@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: newsletter-no-reply-form
+expected_outcome: |
+  2026. 12. 15.는 화요일이 맞으므로 그대로 통과하고, 회신서 없이 안내만 있는 가정통신문이 만들어진다. 미리보기에는 회신 기한 줄이 없다.
