@@ -6,7 +6,7 @@
     "name": "Jongwook Yoo (칠서초등학교)"
   },
   "metadata": {
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "plugins": [
     {
@@ -27,8 +27,8 @@
     },
     {
       "name": "chilseo-docs",
-      "description": "학교 문서 스킬 3종: school-plan-hwpx(계획서 원고 → 한글 내부결재 양식), school-gongmun-draft(기안문 종이 모양 화면·에듀파인 복사·예산 장부·검산), school-newsletter(가정통신문 한글 파일 + 보호자용 미리보기)",
-      "version": "0.2.1",
+      "description": "학교 문서 스킬 4종: school-plan-hwpx(계획서 원고 → 한글 내부결재 양식), school-gongmun-draft(기안문 종이 모양 화면·에듀파인 복사·예산 장부·검산), school-newsletter(가정통신문 한글 파일 + 보호자용 미리보기), school-project-board(사업 하나의 필요한 문서·지금 할 일·다음 할 일·예산 장부를 한 장의 보드로)",
+      "version": "0.3.0",
       "author": {
         "name": "Jongwook Yoo (칠서초등학교)"
       },
@@ -40,7 +40,8 @@
         "계획서",
         "내부결재",
         "기안문",
-        "가정통신문"
+        "가정통신문",
+        "사업 관리"
       ]
     },
     {

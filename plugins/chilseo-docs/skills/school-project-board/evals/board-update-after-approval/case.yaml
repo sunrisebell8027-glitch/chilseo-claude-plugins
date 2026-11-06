@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: board-update-after-approval
+expected_outcome: |
+  buy2의 status를 done으로 바꾸고 doc_no·date를 넣고 log에 한 줄 남긴 뒤 다시 만든다. 새 지금 할 일은 결과 보고 올리기이고, 이를 알려 준다.

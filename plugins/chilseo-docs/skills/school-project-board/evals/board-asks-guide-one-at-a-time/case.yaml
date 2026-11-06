@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: board-asks-guide-one-at-a-time
+expected_outcome: |
+  사업 이름·기간·학교는 이미 받았으므로 다시 묻지 않고, 길잡이 첫 질문 "작년에 쓴 계획서가 있나요?"를 고를 답과 함께 하나만 묻는다. 문서번호·기한을 지어내지 않는다.

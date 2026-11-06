@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: board-from-answers-says-now-and-next
+expected_outcome: |
+  build_board.py로 보드를 만들고 [fail] 없이 통과한다. 필요한 문서는 계획서·품의·결과 보고이고, 지금 할 일은 계획서 결재 받기, 다음 할 일은 품의 올리기다. 계획서 부탁 문구를 함께 알려 준다. 학생 이름은 보드에 넣지 않고 뺐다고 알린다.

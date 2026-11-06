@@ -1,6 +1,6 @@
 # chilseo-docs: 학교 문서 만들기
 
-계획서·기안문·가정통신문을 학교 양식에 맞게 만들어 주는 스킬 세 가지입니다.
+계획서·기안문·가정통신문을 학교 양식에 맞게 만들고, 사업 하나의 문서와 할 일 순서를 보드로 정리하는 스킬 네 가지입니다.
 만든 뒤에는 숫자와 날짜를 스스로 검사하고, 틀린 곳이 있으면 무엇이 틀렸는지 알려 드립니다.
 
 | 스킬 | 만드는 것 | 검사하는 것 |
@@ -8,12 +8,13 @@
 | `school-plan-hwpx` | 계획서 원고 → 학교 내부결재 양식의 한글(HWPX) 파일 | 예산 산출식·합계, 요일, 시간표 학급 중복, 빈자리, 근거·목적·예산 절 |
 | `school-gongmun-draft` | 기안문 → 종이 모양 화면(제목·본문 복사 버튼, 예산 장부, 검사 결과) | 본문 체계, 관련 문서번호, 곱셈 검산, 합계, 금액 한글 표기, 요일, 편성액, 붙임 |
 | `school-newsletter` | 가정통신문 → 학교 양식의 한글 파일 + 보호자용 미리보기 화면 | 요일, 회신 기한, 빈자리, 개인정보 수집 문구를 넣을지 |
+| `school-project-board` | 사업 하나 → 한 장의 보드(필요한 문서, 지금 할 일과 다음 할 일, 부탁 문구, 예산 장부, 일정) | 품의 금액과 장부 합계, 편성액, 요일, 결재를 마친 문서의 문서번호, 지난 기한, 필요한 문서가 빠졌는지 |
 
 ## 들어 있는 것
 
 | 이름 | 내용 |
 |---|---|
-| 스킬 3개 | 위 표와 같습니다. |
+| 스킬 4개 | 위 표와 같습니다. |
 | 칠서초 계획서·가정통신문 양식 | 학교 표어·제목 상자·교표만 남긴 빈 양식입니다. 예전 문서 내용은 모두 지웠습니다. |
 | 기안문·미리보기 화면 틀 | 어느 선생님이 만들어도 같은 모양이 나오게 하는 HTML 틀입니다. |
 | kordoc 연결 | Claude Code에서는 한글 파일 미리 보기·고치기 도구(kordoc)를 함께 켭니다. Node.js가 있어야 합니다. |
@@ -22,7 +23,7 @@
 
 **Claude 앱(채팅 화면)**
 
-1. 필요한 zip을 받습니다(압축을 풀지 않습니다): `school-plan-hwpx.zip`, `school-gongmun-draft.zip`, `school-newsletter.zip`
+1. 필요한 zip을 받습니다(압축을 풀지 않습니다): `school-plan-hwpx.zip`, `school-gongmun-draft.zip`, `school-newsletter.zip`, `school-project-board.zip`
 2. 설정 → 기능(Capabilities)에서 **코드 실행 및 파일 만들기**를 켜고, **스킬(Skills)** → **스킬 업로드**로 zip을 하나씩 올립니다.
 3. 노션 원고를 쓰신다면 설정 → 커넥터에서 **Notion**을 연결합니다. 원고를 대화에 붙여 넣어도 됩니다.
 
@@ -54,6 +55,12 @@
 
 > 학예회 안내 가정통신문을 만들어 주세요. 회신서는 필요 없어요. 보호자가 휴대폰으로 볼 미리보기도 보여 주세요.
 
+**사업 보드**
+
+> 과학 탐구 동아리 사업 보드를 만들어 주세요. 무엇부터 해야 할지 알려 주세요.
+
+Claude가 작년 계획서, 예산, 목적사업비, 학교 밖 활동, 보호자 회신, 외부 강사, 결과 보고를 하나씩 묻고, 필요한 문서를 순서대로 놓은 보드를 만들어 줍니다. 결재를 마치면 "결재 끝났어요, 문서번호는 ○○예요"라고 알려 주세요. 보드를 고치고 다음 할 일을 알려 드립니다.
+
 처음 쓰실 때 Claude가 학교 이름과 양식, 기안문의 결재선을 한 번 묻습니다. 이름·전화번호는 선생님 컴퓨터의 `학교설정.json`에만 저장하고 이 저장소에는 넣지 않습니다.
 
 ## 다른 학교에서 쓰려면
@@ -81,6 +88,7 @@ python3 -m pip install -r skills/school-plan-hwpx/requirements.txt
 python3 skills/school-plan-hwpx/scripts/build.py skills/school-plan-hwpx/examples/sample_reading_week.json -o 결과/계획서.hwpx
 python3 skills/school-gongmun-draft/scripts/build_gongmun.py skills/school-gongmun-draft/examples/sample_science_club.json -o 결과/기안문.html
 python3 skills/school-newsletter/scripts/build_newsletter.py skills/school-newsletter/examples/sample_museum_trip.json -o 결과/가정통신문.hwpx --preview 결과/미리보기.html
+python3 skills/school-project-board/scripts/build_board.py skills/school-project-board/examples/sample_science_club_board.json -o 결과/보드.html
 for s in skills/*/; do python3 -m unittest discover -s "$s/tests"; done
 ```
 
