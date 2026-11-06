@@ -78,6 +78,8 @@ h2 { margin: 0 0 16px; font-size: 1.1em; }
 .items dt { font-weight: 600; color: var(--ink-soft); }
 .items dd { margin: 0; }
 .note { color: var(--ink-soft); font-size: .9em; }
+.subhead { margin: 24px 0 8px; font-size: 1em; }
+.lines { margin: 0 0 16px; padding-left: 1.2em; display: grid; gap: 6px; }
 .reply p { margin: 0 0 12px; }
 .pledge { border-left: 4px solid var(--line); padding-left: 12px; color: var(--ink-soft); }
 .from { text-align: center; display: grid; gap: 4px; font-weight: 600; }
@@ -167,6 +169,10 @@ N.items.forEach(i => {
   $('items').appendChild(d);
 });
 (N.notes || []).forEach(n => $('notes').appendChild(make('p', n.trim().startsWith('※') ? n.trim() : '※ ' + n.trim(), 'note')));
+(N.sections || []).forEach(s => {
+  $('notes').appendChild(make('h3', s.title.replace(/^[<\s]+|[>\s]+$/g, ''), 'subhead'));
+  const ul = make('ul', null, 'lines'); (s.lines || []).forEach(l => ul.appendChild(make('li', l.replace(/^\s*(\d+\.|[○◦•-])\s*/, '')))); $('notes').appendChild(ul);
+});
 
 if (N.reply) {
   $('reply').hidden = false;

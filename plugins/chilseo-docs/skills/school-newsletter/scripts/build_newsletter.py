@@ -20,6 +20,7 @@ T = '{%s}t' % NS['hp']
 DOW = '월화수목금토일'
 CONFIRM = '[확인 필요]'
 LINE_EXTRA = 1883  # 한 줄 더 쓸 때 늘어나는 칸 높이: 승인된 양식의 두 줄 칸(4448) - 한 줄 칸(2565)
+TABLE_GAP = 850  # 안내 표 아래 바깥 여백 3mm: 아래 글이나 날짜와 붙지 않게
 DATE = re.compile(r'(?<!\d)(?:(\d{4})\.\s*)?(\d{1,2})\.\s*(\d{1,2})\.\s*\(([월화수목금토일])\)')
 
 def resolve_template(name=None, base=None):
@@ -42,11 +43,17 @@ def strings(data):
     """Every text the notice shows, in reading order."""
     out = [data['title'], *data.get('greeting', [])]
     out += [f'{i.get("label", "")} {i["text"]}' for i in data.get('items', [])] + data.get('notes', [])
+    for sec in data.get('sections') or []: out += [sec.get('title', ''), *sec.get('lines', [])]
     s = data.get('summary') or {}
     out += [s.get('when', ''), s.get('reply_by', ''), *s.get('bring', [])]
     r = data.get('reply') or {}
-    out += [r.get('title', ''), r.get('pledge', ''), r.get('note', '')]
+    out += [r.get('title', ''), r.get('pledge', ''), r.get('note', ''), *r.get('consents', []), *r.get('fields', [])]
     return [x for x in out if x]
+
+def consent_lines(reply):
+    """참가 말고 따로 묻는 동의(사진 게시 등): 한 줄에 하나씩 동의함·동의하지 않음 칸을 둔다."""
+    return ([f'○ {c}에 동의합니까?   □ 동의함   □ 동의하지 않음' for c in reply.get('consents') or []]
+            + [f'○ {f}: ' + '_' * 30 for f in reply.get('fields') or []])
 
 def privacy_lines(reply):
     p = reply.get('privacy') or {}
@@ -55,6 +62,28 @@ def privacy_lines(reply):
     return [f'※ 개인정보 수집·이용 안내: 수집 항목({v("items")}), 이용 목적({v("purpose")}), 보유 기간({v("retention")})',
             f'   동의하지 않을 수 있으며, 동의하지 않으면 {v("refusal")}.',
             '   개인정보 수집·이용에 동의합니까?   □ 동의함   □ 동의하지 않음']
+
+PAGE_BODY = 71718  # A4 본문 높이(HWPUNIT): 84188 - 위 4251 - 아래 2834 - 머리말 1134 - 꼬리말 4251
+
+def page_height(data):
+    """양식의 줄 높이로 어림한 본문 높이. 한글이 실제로 나누는 쪽과 조금 다를 수 있다."""
+    def lines(text, per_line):
+        return sum(max(1, -(-len(part) // per_line)) for part in text.split('\n'))
+    h = 7800 + 4200  # 머리 상자, 제목 상자
+    h += sum(1920 * lines(g, 44) for g in data.get('greeting') or [])  # 첫 줄 짧게 들여쓰기
+    h += 2080 + 2565  # 표 위 제목, 구분·내용 줄
+    h += sum(2565 + 1883 * (lines(i['text'], 42) - 1) for i in data['items'])
+    h += TABLE_GAP  # 표 아래 바깥 여백
+    h += sum(1600 * lines(n, 52) for n in data.get('notes') or [])
+    for block in data.get('sections') or []:
+        h += 2080 + sum(1920 * lines(l, 44) for l in block.get('lines', []))
+    h += 1750 + 2250  # 발행일, 학교장
+    reply = data.get('reply')
+    if reply:
+        h += 1000 + 3166 + 1440 + 4462 + 1320 + 2 * 1400  # 자르는 선, 제목, 학년·반, 동의 표, 확인 문장, 서명 두 줄
+        h += sum(1600 * lines(l, 52) for l in consent_lines(reply) + privacy_lines(reply))
+        if reply.get('note'): h += 1600 * lines(reply['note'], 52)
+    return h
 
 def validate(data, masthead=None):
     """Raise ValueError on what must be fixed; return the list of things to confirm."""
@@ -87,6 +116,9 @@ def validate(data, masthead=None):
     m = data.get('masthead') or {}
     if len(m.get('phones') or []) < 2 or not m.get('homepage'):
         confirm.append('머리말의 교무실·행정실 전화번호와 누리집 주소를 학교설정에서 채워 주세요.')
+    over = page_height(data) - PAGE_BODY
+    if over > 0:
+        confirm.append(f'한 쪽을 넘을 것 같아요(어림 {over * 100 // PAGE_BODY + 1}% 넘음). 인사말·세부 일정·안내 묶음을 줄여 주세요.')
     n = json.dumps(data, ensure_ascii=False).count(CONFIRM)
     if n: confirm.append(f'{CONFIRM}로 둔 {n}곳을 채워 주세요.')
     return confirm
@@ -119,6 +151,20 @@ def build(data, target, base=None):
                 if tt.text and marker in tt.text: tt.text = tt.text.replace(marker, v)
             parent.insert(at + 1 + i, q)
         parent.remove(p)
+        return parent[at:at + len(values)]
+
+    head_style = copy.deepcopy(para_of(holder('{{ITEMS_HEAD}}')))
+    line_style = copy.deepcopy(para_of(holder('{{GREETING}}')))
+    def sections(blocks):
+        """※ 알림 아래에 소제목과 줄 목록을 넣는다(소제목은 표 위 제목, 줄은 인사말 모양)."""
+        at = para_of(holder('{{DATE}}'))
+        for block in blocks:
+            for style, marker, text in [(head_style, '{{ITEMS_HEAD}}', block['title'])] + \
+                    [(line_style, '{{GREETING}}', line) for line in block.get('lines', [])]:
+                q = copy.deepcopy(style)
+                for tt in q.iter(T):
+                    if tt.text and marker in tt.text: tt.text = tt.text.replace(marker, text)
+                at.addprevious(q)
 
     def item_rows(items):
         """One 구분/내용 row per item, in the template's first/middle/last row styles.
@@ -165,13 +211,20 @@ def build(data, target, base=None):
     fill('{{ITEMS_HEAD}}', data.get('items_title') or '< 안내 내용 >')
     item_rows(data['items'])
     repeat('{{NOTE}}', [x if x.lstrip().startswith('※') else '※ ' + x for x in data.get('notes') or []])
+    sections(data.get('sections') or [])
+    table = next(t for t in sec.iter(T) if t.text == '구분')
+    while E.QName(table).localname != 'tbl': table = table.getparent()
+    table.find('hp:outMargin', NS).set('bottom', str(TABLE_GAP))  # 빈 줄 대신 표 아래 바깥 여백으로 띄운다
     fill('{{DATE}}', data.get('issue_date') or f'{today.year}년 {today.month}월    일')
     head_p = para_of(holder('{{HEAD}}'))
     fill('{{HEAD}}', ' '.join(school + '장'))
     reply = data.get('reply')
     if reply:
         fill('{{REPLY_TITLE}}', reply.get('title') or f'『{data["title"]}』 참가 동의서')
-        repeat('{{PLEDGE}}', [reply.get('pledge') or '상기 내용을 확인하고 동의서를 제출합니다.'] + privacy_lines(reply))
+        note_style = para_of(holder('{{REPLY_NOTE}}')).get('paraPrIDRef')
+        pledge = repeat('{{PLEDGE}}', [reply.get('pledge') or '상기 내용을 확인하고 동의서를 제출합니다.']
+                        + consent_lines(reply) + privacy_lines(reply))
+        for q in pledge[1:]: q.set('paraPrIDRef', note_style)  # 개인정보 안내는 가운데가 아니라 ※ 알림처럼 왼쪽부터
         note = reply.get('note')
         repeat('{{REPLY_NOTE}}', [note if note.lstrip().startswith('※') else '※' + note] if note else [])
     else:
@@ -205,10 +258,10 @@ def build(data, target, base=None):
     return report
 
 def preview(data, confirm, target):
-    page = {k: data.get(k) for k in ('school', 'title', 'greeting', 'items', 'notes', 'summary', 'issue_date', 'example')}
+    page = {k: data.get(k) for k in ('school', 'title', 'greeting', 'items', 'notes', 'sections', 'summary', 'issue_date', 'example')}
     reply = data.get('reply')
     page['reply'] = reply and {'title': reply.get('title') or f'『{data["title"]}』 참가 동의서', 'pledge': reply.get('pledge'), 'note': reply.get('note'),
-                               'privacy': privacy_lines(reply), 'privacy_include': (reply.get('privacy') or {}).get('include')}
+                               'privacy': consent_lines(reply) + privacy_lines(reply), 'privacy_include': (reply.get('privacy') or {}).get('include')}
     page['confirm'] = confirm
     payload = json.dumps(page, ensure_ascii=False).replace('</', '<\\/')
     out = PREVIEW.read_text().replace('__PAGE_TITLE__', html.escape(data.get('page_title') or data['title'][:30]))
