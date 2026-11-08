@@ -81,6 +81,11 @@ def iter_files(targets: list[str]):
 
 def iter_copy(text: str):
     """(줄 번호, 열 번호, 문구)를 돌려준다. 주석과 <style> 안은 건너뛴다."""
+    # HTML 주석과 style 블록은 여러 줄이거나 다른 태그와 한 줄에 있어도
+    # 줄 번호를 유지한 채 먼저 비운다.
+    text = re.sub(r"<!--.*?-->|<style\b[^>]*>.*?</style\s*>",
+                  lambda m: re.sub(r"[^\n]", " ", m.group(0)), text,
+                  flags=re.IGNORECASE | re.DOTALL)
     in_block_comment = False
     in_html_comment = False
     in_style = False
@@ -91,9 +96,6 @@ def iter_copy(text: str):
         if in_style:
             if "</style" in lower:
                 in_style = False
-            continue
-        if "<style" in lower and "</style" not in lower:
-            in_style = True
             continue
         if in_html_comment:
             if "-->" in line:

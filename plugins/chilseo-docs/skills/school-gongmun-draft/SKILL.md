@@ -20,7 +20,7 @@ description: "학교 공문 기안문(내부결재 시행문)을 종이 모양 �
 
 ## 0. 처음 쓸 때 (한 번만)
 
-작업 폴더에 `학교설정.json`이 있으면 읽는다. 없으면 아래를 한 번에 묻고 저장한다. 모양은 `$S/assets/school-settings.example.json`이다.
+작업 폴더에 `학교설정.json`이 있으면 읽는다. 없으면 `~/.chilseo/학교설정.json`을 본다(`school-start` 시작하기가 만든다). 둘 다 없으면 아래를 한 번에 묻고 작업 폴더의 `학교설정.json`에 저장한다. 모양은 `$S/assets/school-settings.example.json`이다. 이 스킬이 쓰는 칸은 `school`·`slogan`·`approval`·`cooperation`·`footer`다. 파일이 이미 있으면 빠진 칸만 채우고, 다른 스킬이 쓰는 칸(`template`, `masthead`)은 지우지 않는다.
 
 1. 학교 이름, 종이 맨 위 표어(없어도 됨)
 2. 결재선: 기안자 직위, 검토·결재자 직위와 이름, 협조자

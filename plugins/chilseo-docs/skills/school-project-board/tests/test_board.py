@@ -37,6 +37,34 @@ class BoardTest(unittest.TestCase):
         html = bb.render(data, bb.check(data))
         self.assertIn('<title>&lt;b&gt;사업 &amp; 준비&lt;/b&gt; 보드</title>', html)
 
+    def test_weekday_uses_explicit_year_for_following_dates(self):
+        data = {'school': '한빛초등학교', 'project': '2025. 3. 2.(일) ~ 3. 3.(월)', 'updated': '2026-03-02'}
+        self.assertEqual(bb.weekday_errors(data), [])
+        data['project'] = '2025. 3. 2.(일) ~ 3. 3.(화)'
+        self.assertIn('3. 3.(화) → (월)', bb.weekday_errors(data))
+
+    def test_ledger_rejects_numbers_that_javascript_cannot_represent(self):
+        data = {'school': '한빛초등학교', 'project': '사업', 'updated': '2026-03-02',
+                'ledger': [{'name': '예산', 'allocated': 2**53}]}
+        with self.assertRaisesRegex(ValueError, 'allocated'): bb.check(data)
+        data['ledger'] = [{'name': '첫째', 'allocated': 2**53 - 1}, {'name': '둘째', 'allocated': 1}]
+        with self.assertRaisesRegex(ValueError, '합계'): bb.check(data)
+
+    def test_invalid_draft_items_identify_field(self):
+        data = copy.deepcopy(SAMPLE)
+        next(d for d in data['docs'] if d['id'] == 'buy2')['draft']['items'] = [{}]
+        with self.assertRaisesRegex(ValueError, 'items.*text'): bb.check(data)
+
+    def test_cli_rejects_invalid_unicode_without_traceback(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / '입력.json'
+            path.write_text('{"school":"학교", "project":"\\ud800", "updated":"2026-03-02"}', encoding='utf-8')
+            run = subprocess.run([sys.executable, str(SKILL / 'scripts' / 'build_board.py'), str(path), '-o', str(Path(tmp) / '보드.html')], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 2)
+        self.assertIn('유니코드', run.stderr)
+        self.assertNotIn('Traceback', run.stderr)
+
     def test_cli_reports_unwritable_output_without_traceback(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:

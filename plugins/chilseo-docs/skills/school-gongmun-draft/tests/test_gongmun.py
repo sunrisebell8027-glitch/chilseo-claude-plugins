@@ -139,4 +139,19 @@ class GongmunTests(unittest.TestCase):
   self.assertEqual(by_id(g.check(self.data))['V1']['status'],'ok')
   self.data['items']=[{'text':'11. 행사'}]
   self.assertEqual(by_id(g.check(self.data))['V1']['status'],'fail')
+ def test_decimal_formula_does_not_pass_as_integer_formula(self):
+  for text in ('재료: 1.5원*2개=10원', '재료: 5원*1.5개=25원', '재료: 5원*2개=10.0원'):
+   self.data['items']=[{'text':text}]
+   with self.subTest(text=text), self.assertRaisesRegex(ValueError,'산출식'):
+    g.check(self.data)
+ def test_whitespace_receiver_is_missing(self):
+  self.data['receiver']='   '
+  self.assertEqual(by_id(g.check(self.data))['V1']['status'],'fail')
+ def test_unknown_related_source_is_not_confirmed(self):
+  self.data['related']=[dict(self.data['related'][0],source='[확인 필요]')]
+  self.assertEqual(by_id(g.check(self.data))['V2-1']['status'],'warn')
+ def test_extremely_long_amount_has_korean_error(self):
+  self.data['items']=[{'text':'재료: '+ '9'*5000 +'원*2개=2원'}]
+  with self.assertRaisesRegex(ValueError,'금액'):
+   g.check(self.data)
 if __name__=='__main__':unittest.main()

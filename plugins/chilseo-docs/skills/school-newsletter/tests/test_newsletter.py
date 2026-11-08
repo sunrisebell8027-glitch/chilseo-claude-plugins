@@ -36,6 +36,18 @@ class NewsletterTests(unittest.TestCase):
   items=next(t for t in tables if '구분' in ''.join(t.itertext()))
   self.assertEqual(int(items.get('rowCnt')),1+len(self.data['items']))
   self.assertEqual([tr.find('hp:tc/hp:cellAddr',ns).get('rowAddr') for tr in items.findall('hp:tr',ns)],[str(i) for i in range(1+len(self.data['items']))])
+ def test_single_item_keeps_bottom_border(self):
+  self.data['items']=self.data['items'][:1];b.build(self.data,self.out)
+  with zipfile.ZipFile(self.out) as z:sec=E.fromstring(z.read('Contents/section0.xml'));head=E.fromstring(z.read('Contents/header.xml'))
+  ns={**b.NS,'hh':'http://www.hancom.co.kr/hwpml/2011/head'}
+  table=next(t for t in sec.iter('{%s}tbl'%ns['hp']) if '구분' in ''.join(t.itertext()))
+  for cell in table.findall('hp:tr',ns)[-1].findall('hp:tc',ns):
+   border=head.find(".//hh:borderFill[@id='%s']/hh:bottomBorder"%cell.get('borderFillIDRef'),ns)
+   self.assertEqual(border.get('width'),'0.4 mm')
+ def test_invalid_utf8_has_korean_help(self):
+  source=Path(self.tmp.name)/'입력.json';source.write_bytes(b'\xff')
+  result=subprocess.run([sys.executable,str(R/'scripts/build_newsletter.py'),str(source),'-o',str(self.out)],capture_output=True,text=True)
+  self.assertNotEqual(result.returncode,0);self.assertIn('UTF-8 형식으로 저장해 주세요',result.stderr);self.assertNotIn('Traceback',result.stderr)
  def test_body_spacing_and_margin_below_table(self):
   b.build(self.data,self.out)
   with zipfile.ZipFile(self.out) as z:sec=E.fromstring(z.read('Contents/section0.xml'));head=E.fromstring(z.read('Contents/header.xml'))
@@ -108,11 +120,23 @@ class NewsletterTests(unittest.TestCase):
  def test_reply_deadline_before_event(self):
   self.data['summary']['reply_by']='2026. 12. 10.(목)'
   with self.assertRaisesRegex(ValueError,'deadline'):b.validate(self.data)
+ def test_iso_deadline_is_compared_and_unknown_dates_are_flagged(self):
+  self.data['summary']['reply_by']='2026-12-10'
+  with self.assertRaisesRegex(ValueError,'deadline'):b.validate(self.data)
+  self.data['summary']['reply_by']='추후 안내'
+  self.assertTrue(any('비교할 수 없어요' in c for c in b.validate(self.data)))
+  self.data['summary']['reply_by']='2026-02-30'
+  with self.assertRaisesRegex(ValueError,'실제 날짜'):b.validate(self.data)
+ def test_greeting_equal_to_table_heading(self):
+  self.data['greeting']=['구분']
+  b.build(self.data,self.out)
+  self.assertIn('구분',body(self.out))
  def test_reply_needs_deadline(self):
   self.data['summary'].pop('reply_by')
   with self.assertRaisesRegex(ValueError,'reply_by'):b.validate(self.data)
  def test_school_must_match_masthead(self):
   with self.assertRaisesRegex(ValueError,'School'):b.build(dict(self.data,school='다른초등학교'),self.out)
+  with self.assertRaisesRegex(ValueError,'School'):b.build(dict(self.data,school='칠서초'),self.out)
  def test_preview_page(self):
   report=b.build(self.data,self.out);page=Path(self.tmp.name)/'p.html'
   b.preview(self.data,report['needs_confirmation'],page);html=page.read_text()

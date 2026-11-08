@@ -22,18 +22,19 @@ description: "가정통신문을 학교 한글(.hwpx) 양식으로 만들고, �
 
 ## 0. 준비
 
-```bash
-python3 -m pip install -r "$S/requirements.txt"     # lxml, python-hwpx
-```
+Python 3와 패키지 두 개(lxml, python-hwpx)가 필요하다. `school-start`(시작하기)를 마쳤으면 건너뛴다. 스크립트가 시작하기가 만든 `~/.chilseo/venv`를 알아서 찾아 쓴다.
 
-막히면 가상환경을 만든다: `python3 -m venv .venv && .venv/bin/pip install -r "$S/requirements.txt"`.
+패키지가 없으면 스크립트가 한국어로 알려 주고 멈춘다. 그때는 둘 중 하나를 한다.
+
+- Claude Code: `school-start` 스킬로 준비한다(`~/.chilseo/venv`에 설치).
+- 그 밖의 환경: `python3 -m pip install -r "$S/requirements.txt"`. `externally-managed-environment`로 막히면 `python3 -m venv .venv`를 만들고 그 안의 pip(`.venv/bin/pip`, Windows는 `.venv\Scripts\pip.exe`)로 설치한 뒤, 아래 모든 `python3`를 그 venv의 python으로 바꿔 실행한다. Windows에서 `python3`가 없으면 `python` 또는 `py -3`을 쓴다.
 
 ## 1. 처음 쓸 때 확인 (한 번만)
 
-작업 폴더의 `학교설정.json`을 읽는다. 없으면 한 번에 묻는다.
+작업 폴더의 `학교설정.json`을 읽는다. 없으면 `~/.chilseo/학교설정.json`을 본다. 둘 다 없으면 한 번에 묻고 작업 폴더의 `학교설정.json`에 저장한다. 이 스킬이 쓰는 칸은 `school`과 `masthead`다. 파일이 이미 있으면 이 두 칸만 채우고, 다른 스킬이 쓰는 칸은 지우지 않는다.
 
 1. 학교 이름 (예: 칠서초등학교)
-2. 머리말 오른쪽 칸의 교무실·행정실 대표 번호와 학교 누리집 주소. JSON의 `masthead`에 넣는다. 모르면 `[확인 필요]`로 두고 정할 것에 올린다.
+2. 머리말 오른쪽 칸의 교무실·행정실 대표 번호와 학교 누리집 주소. `학교설정.json`의 `masthead`(`{"phones": [...], "homepage": "..."}`)에 저장하고, 통신문 JSON의 `masthead`에도 그대로 넣는다. 모르면 `[확인 필요]`로 두고 정할 것에 올린다.
 3. 다른 학교면: 예전에 보낸 가정통신문 HWPX 하나. 이 스킬의 양식 대신 kordoc `parse_document` → `patch_document`로 그 파일의 서식을 살려 내용만 바꾼다. 그 경우 아래 2~3단계 JSON은 내용 정리용으로만 쓴다.
 
 교직원 개인 번호는 넣지 않는다. 학교 대표 번호만 쓴다.

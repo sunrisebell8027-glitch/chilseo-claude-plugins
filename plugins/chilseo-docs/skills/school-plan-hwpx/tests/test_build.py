@@ -1,4 +1,4 @@
-import copy,json,sys,tempfile,unittest,zipfile
+import copy,json,subprocess,sys,tempfile,unittest,zipfile
 from pathlib import Path
 from lxml import etree as E
 R=Path(__file__).resolve().parents[1]
@@ -7,6 +7,26 @@ import build,gate,fix_namespaces
 EXAMPLE=R/'examples/sample_reading_week.json'
 class BuildTests(unittest.TestCase):
  def setUp(self):self.data=json.loads(EXAMPLE.read_text())
+ def test_non_object_input_has_korean_error(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   source=Path(tmp)/'입력.json';source.write_text('[]')
+   result=subprocess.run([sys.executable,str(R/'scripts/build.py'),str(source),'-o',str(Path(tmp)/'결과.hwpx')],capture_output=True,text=True)
+   self.assertEqual(result.returncode,1)
+   self.assertIn('입력 JSON은 객체로 작성해 주세요',result.stderr)
+   self.assertNotIn('Traceback',result.stderr)
+ def test_invalid_budget_and_slots_show_korean_error(self):
+  cases=[('budget',{}),('budget',{'items':[1],'total':1}),
+         ('budget',{'items':[{'amount':1,'formula':123}],'total':1}),
+         ('slots',[{}]),('slots',[{'periods':'1교시','classes':[{}]}])]
+  with tempfile.TemporaryDirectory() as tmp:
+   for key,value in cases:
+    with self.subTest(key=key,value=value):
+     data=copy.deepcopy(self.data);data[key]=value
+     source=Path(tmp)/'입력.json';source.write_text(json.dumps(data,ensure_ascii=False))
+     result=subprocess.run([sys.executable,str(R/'scripts/build.py'),str(source),'-o',str(Path(tmp)/'결과.hwpx')],capture_output=True,text=True)
+     self.assertEqual(result.returncode,1)
+     self.assertIn('확인해 주세요',result.stderr)
+     self.assertNotIn('Traceback',result.stderr)
  def test_budget_bad_math_rejected(self):
   self.data['budget']['total']=400000
   with self.assertRaisesRegex(ValueError,'calculation'):build.validate(self.data)
@@ -20,6 +40,10 @@ class BuildTests(unittest.TestCase):
   self.data['pages'][1][1]['rows'][2][2]='1,120,000'
   self.data['pages'][1][1]['rows'][3][2]='1,420,000'
   with self.assertRaisesRegex(ValueError,'displayed'):build.validate(self.data)
+ def test_budget_formula_and_amount_must_share_row(self):
+  rows=self.data['pages'][1][1]['rows']
+  rows[1][2],rows[2][2]=rows[2][2],rows[1][2]
+  with self.assertRaisesRegex(ValueError,'같은 행'):build.validate(self.data)
  def test_older_budget_form_accepted(self):
   self.data['budget']={'unit_price':2000,'headcount':60,'total':120000}
   self.data['pages'][1][1]['rows'][3][2]='120,000'

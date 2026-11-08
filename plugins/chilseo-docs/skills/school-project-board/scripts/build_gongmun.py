@@ -78,7 +78,10 @@ def plain_body(body):
 def won(s):
     if not re.fullmatch(r'(?:\d+|\d{1,3}(?:,\d{3})+)', s):
         raise ValueError('금액과 수량의 숫자 또는 쉼표 위치를 확인해 주세요')
-    return int(s.replace(',', ''))
+    try:
+        return int(s.replace(',', ''))
+    except ValueError:
+        raise ValueError('금액과 수량의 숫자가 너무 길어요. 다시 확인해 주세요')
 
 def korean_amount(n):
     """368000 -> 삼십육만팔천 (leading 일 before 십·백·천·만 left out)."""
@@ -98,6 +101,7 @@ def normalize_korean(s):
     return re.sub(r'일(?=[십백천])|(?<![가-힣])일(?=[만억조])', '', s)
 
 FORMULA = re.compile(r'([\d,]+)원((?:\s*[*×xX]\s*[\d,]+[가-힣]*)+)\s*=\s*([\d,]+)원')
+DECIMAL_FORMULA = re.compile(r'[\d,.]+원(?:\s*[*×xX]\s*[\d,.]+[가-힣]*)+\s*=\s*[\d,.]+원')
 OWN_AMOUNT = re.compile(r'^[^:：]{1,40}[:：]\s*금?([\d,]+)원')
 KOREAN_AMOUNT = re.compile(r'금\s*([\d,]+)원\s*\(\s*금\s*([가-힣]+)\s*원\s*\)')
 
@@ -210,7 +214,7 @@ def check(data):
 
     # V1 형식
     problems = []
-    if not data.get('receiver'): problems.append('수신이 비어 있어요')
+    if not (data.get('receiver') or '').strip(): problems.append('수신이 비어 있어요')
     if data['title'].rstrip().endswith('.'): problems.append('제목 끝에 마침표가 있어요')
     def all_items(items):
         for it in items:
@@ -227,7 +231,7 @@ def check(data):
     if related:
         bad = [r for r in related if r.get('doc_no') and r['doc_no'] != CONFIRM and not re.fullmatch(r'\S+-\d+', r['doc_no'])]
         unknown = [r for r in related if not r.get('doc_no') or r['doc_no'] == CONFIRM or not r.get('date') or r.get('date') == CONFIRM or not r.get('title') or r.get('title') == CONFIRM]
-        unsourced = [r for r in related if r not in unknown and not r.get('source')]
+        unsourced = [r for r in related if r not in unknown and (not (r.get('source') or '').strip() or CONFIRM in r['source'])]
         if bad: add('V2-1', '관련 문서', 'fail', f'문서번호 모양이 달라요: {bad[0]["doc_no"]} (기관명-번호)')
         elif unknown or unsourced:
             add('V2-1', '관련 문서', 'warn', f'{len(unknown)}건은 문서번호·날짜·제목을 아직 몰라요' if unknown
@@ -238,6 +242,8 @@ def check(data):
     # C1 곱셈, C2 합계, C3 한글 금액
     calc_err, n_formula = [], 0
     for t in texts:
+        if any('.' in m.group(0) for m in DECIMAL_FORMULA.finditer(t)):
+            raise ValueError('산출식의 금액과 수량은 정수로 적어 주세요')
         for m in FORMULA.finditer(t):
             n_formula += 1
             product = won(m.group(1))

@@ -21,18 +21,18 @@ description: "노션이나 대화에 적은 학교 계획서 원고를 학교 �
 
 ## 0. 준비
 
-Python 3와 패키지 두 개가 필요하다.
+Python 3와 패키지 두 개(lxml, python-hwpx)가 필요하다. `school-start`(시작하기)를 마쳤으면 건너뛴다. 스크립트가 시작하기가 만든 `~/.chilseo/venv`를 알아서 찾아 쓴다.
 
-```bash
-python3 -m pip install -r "$S/requirements.txt"     # lxml, python-hwpx
-```
+패키지가 없으면 스크립트가 한국어로 알려 주고 멈춘다. 그때는 둘 중 하나를 한다.
 
-설치가 막히면(학교 PC 권한 등) 가상환경을 만든다: `python3 -m venv .venv && .venv/bin/pip install -r "$S/requirements.txt"`.
+- Claude Code: `school-start` 스킬로 준비한다(`~/.chilseo/venv`에 설치).
+- 그 밖의 환경: `python3 -m pip install -r "$S/requirements.txt"`. `externally-managed-environment`로 막히면 `python3 -m venv .venv`를 만들고 그 안의 pip(`.venv/bin/pip`, Windows는 `.venv\Scripts\pip.exe`)로 설치한 뒤, 아래 모든 `python3`를 그 venv의 python으로 바꿔 실행한다. Windows에서 `python3`가 없으면 `python` 또는 `py -3`을 쓴다.
+
 kordoc 도구(`render_document`, `parse_document`, `patch_document`)가 연결되어 있으면 렌더 확인과 수정본 고치기에 쓴다. 없어도 생성과 검사는 된다.
 
 ## 1. 처음 쓸 때 확인 (한 번만)
 
-작업 폴더에 `학교설정.json`이 있으면 읽고 넘어간다. 없으면 아래를 **한 번에** 묻는다.
+작업 폴더에 `학교설정.json`이 있으면 읽고 넘어간다. 없으면 `~/.chilseo/학교설정.json`을 본다. 둘 다 없으면 아래를 **한 번에** 묻는다.
 
 1. 학교 이름 (예: 칠서초등학교)
 2. 학교 양식
@@ -40,7 +40,7 @@ kordoc 도구(`render_document`, `parse_document`, `patch_document`)가 연결�
    - 다른 학교 → 예전에 결재한 계획서 HWPX 하나를 받는다. 머리말(학교 표어·제목 상자·교표)이 문서 맨 앞에 있어야 한다. `clean_template.py`로 빈 양식을 만든다(아래 "다른 학교 양식 만들기").
 3. 원고가 어디 있는지: 노션 페이지 주소, 대화에 붙여 넣은 글, 파일, 작년 계획서 중 하나
 
-답을 받으면 작업 폴더에 저장해서 다음에는 묻지 않는다.
+답을 받으면 작업 폴더의 `학교설정.json`에 저장해서 다음에는 묻지 않는다. 이 스킬이 쓰는 칸은 `school`과 `template`이다. 파일이 이미 있으면 이 두 칸만 채우고, 다른 스킬이 쓰는 칸(결재선·전화 등)은 지우지 않는다.
 
 ```json
 {"school": "칠서초등학교", "template": "chilseo_plan_template.hwpx"}

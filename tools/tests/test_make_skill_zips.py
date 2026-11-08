@@ -1,7 +1,10 @@
 import tempfile
 import unittest
 import zipfile
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -32,6 +35,25 @@ class PackTests(unittest.TestCase):
                 self.assertIn('sample/SKILL.md', names)
                 self.assertIn('sample/scripts/run.py', names)
                 self.assertEqual(len(names), 2)
+
+    def test_main_skips_code_only_skill_and_packs_other_skills(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ('school-start', 'sample'):
+                skill = root / 'plugins' / 'example' / 'skills' / name
+                skill.mkdir(parents=True)
+                (skill / 'SKILL.md').write_text('skill', encoding='utf-8')
+
+            output = StringIO()
+            (root / 'dist').mkdir()
+            (root / 'dist' / 'school-start.zip').write_bytes(b'old package')
+            with patch.object(make_skill_zips, 'ROOT', root), redirect_stdout(output):
+                self.assertEqual(make_skill_zips.main(), 0)
+
+            self.assertFalse((root / 'dist' / 'school-start.zip').exists())
+            self.assertTrue((root / 'dist' / 'sample.zip').exists())
+            self.assertIn('school-start', output.getvalue())
+            self.assertIn('제외해요', output.getvalue())
 
 
 if __name__ == '__main__':

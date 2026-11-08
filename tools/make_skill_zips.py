@@ -10,6 +10,8 @@ SKIP_DIRS = {
 }
 SKIP_FILES = {'.DS_Store', '.env', '.env.local', '.env.development', '.env.production'}
 PRIVATE_NAMES = {'.npmrc', '.pypirc', 'credentials', 'credentials.json', 'secrets.json'}
+# Claude Code 전용 스킬은 Claude 앱 압축 파일에서 제외해요.
+CODE_ONLY_SKILLS = {'school-start'}
 
 
 def pack(skill, dist):
@@ -34,6 +36,10 @@ def main():
         print('No skills found', file=sys.stderr)
         return 1
     for skill in skills:
+        if skill.name in CODE_ONLY_SKILLS:
+            (dist / f'{skill.name}.zip').unlink(missing_ok=True)
+            print(f'Skipped {skill.relative_to(ROOT)}: Claude Code 전용 스킬이라 Claude 앱 압축 파일에서 제외해요.')
+            continue
         target = pack(skill, dist)
         print(f'{target.relative_to(ROOT)}  {target.stat().st_size // 1024} KB')
     return 0

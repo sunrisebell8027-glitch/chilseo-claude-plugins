@@ -33,7 +33,24 @@ class FetchAssetsTests(unittest.TestCase):
 
     def test_list_works_with_korean_and_spaced_project_path(self):
         with tempfile.TemporaryDirectory(prefix='학교 앱 ') as tmp:
-            fetch_assets.list_assets(Path(tmp))
+            from unittest.mock import patch
+            import contextlib
+            import io
+            with patch('sys.argv', ['fetch_assets.py', tmp, '--list']), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(fetch_assets.main(), 0)
+
+    def test_missing_project_is_reported_without_traceback(self):
+        with tempfile.TemporaryDirectory(prefix='없는 학교 앱 ') as tmp:
+            missing = str(Path(tmp) / '없는 폴더')
+            from unittest.mock import patch
+            import contextlib
+            import io
+            stderr = io.StringIO()
+            with patch('sys.argv', ['fetch_assets.py', missing, '--list']), \
+                    contextlib.redirect_stderr(stderr):
+                self.assertEqual(fetch_assets.main(), 1)
+            self.assertIn('프로젝트 폴더가 없어요', stderr.getvalue())
 
 
 if __name__ == '__main__':

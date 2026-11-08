@@ -8,9 +8,50 @@ greeting and note paragraphs are copied once per entry and the 구분/내용 tab
 gets one row per item. The consent form is kept only when the JSON has `reply`.
 """
 from __future__ import annotations
-import argparse, copy, datetime, hashlib, html, json, re, subprocess, sys, zipfile
+import argparse, copy, datetime, hashlib, html, json, os, re, shutil, subprocess, sys, zipfile
 from pathlib import Path
-from lxml import etree as E
+
+
+def _venv_python(folder):
+    return folder / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+
+
+def _python_candidates():
+    configured = os.environ.get('CHILSEO_PYTHON')
+    home = Path(os.environ.get('CHILSEO_HOME') or Path.home() / '.chilseo').expanduser()
+    return ([configured] if configured else []) + [
+        _venv_python(home / 'venv'), _venv_python(Path(__file__).resolve().parent.parent / '.venv'),
+        _venv_python(Path.cwd() / '.venv')]
+
+
+def _bootstrap():
+    if 'CHILSEO_BOOTSTRAPPED' not in os.environ:
+        for candidate in _python_candidates():
+            executable = shutil.which(str(candidate))
+            if not executable or os.path.normcase(os.path.abspath(executable)) == os.path.normcase(os.path.abspath(sys.executable)):
+                continue
+            try:
+                check = subprocess.run([executable, '-c', 'import lxml'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if check.returncode == 0:
+                    env = os.environ.copy()
+                    env['CHILSEO_BOOTSTRAPPED'] = '1'
+                    sys.exit(subprocess.run([executable, *sys.argv], env=env).returncode)
+            except OSError:
+                continue
+    requirements = Path(__file__).resolve().parent.parent / 'requirements.txt'
+    requirements_arg = f'"{requirements}"' if ' ' in str(requirements) else str(requirements)
+    print('문서를 만들려면 lxml과 python-hwpx가 필요해요.\n'
+          "Claude Code에서 먼저 '시작하기'(school-start)를 실행해 주세요.\n"
+          f'직접 설치하려면 다음 명령을 실행해 주세요: python3 -m pip install -r {requirements_arg}\n'
+          'externally-managed-environment(시스템 설치 제한) 오류가 나면 '
+          "'시작하기'로 별도 설치 폴더를 만들어 주세요.", file=sys.stderr)
+    sys.exit(2)
+
+
+try:
+    from lxml import etree as E
+except ImportError:
+    _bootstrap()
 SCRIPTS = Path(__file__).resolve().parent
 SKILL = SCRIPTS.parent
 DEFAULT_TEMPLATE = SKILL/'templates'/'chilseo_newsletter_template.hwpx'
@@ -38,6 +79,14 @@ def dates_in(text, year=None):
         try: d = datetime.date(year, int(m.group(2)), int(m.group(3)))
         except ValueError: d = None
         yield d, m.group(4), m.group(0)
+
+def first_date(text, year):
+    match = re.search(r'(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)', text)
+    dotted = DATE.search(text)
+    if match and (not dotted or match.start() < dotted.start()):
+        try: return datetime.date.fromisoformat(match.group())
+        except ValueError: raise ValueError(f'실제 날짜로 고쳐 주세요: {match.group()}')
+    return next((d for d, _, _ in dates_in(text, year) if d), None)
 
 def strings(data):
     """Every text the notice shows, in reading order."""
@@ -149,7 +198,7 @@ def validate(data, masthead=None):
     validate_types(data)
     for key in ('title', 'school', 'items', 'summary'):
         if not data.get(key): raise ValueError(f'Missing required field: {key}')
-    if masthead is not None and data['school'] not in masthead:
+    if masthead is not None and not re.search(r'(?<![가-힣A-Za-z0-9])' + re.escape(data['school']) + r'(?![가-힣A-Za-z0-9])', masthead):
         raise ValueError('School: 학교 이름이 양식 머리말과 같도록 확인해 주세요.')
     if not data['summary'].get('when'): raise ValueError('summary.when is required (보호자가 맨 위에서 볼 날짜)')
     try: year = datetime.date.fromisoformat(data['doc_date']).year if data.get('doc_date') else datetime.date.today().year
@@ -163,10 +212,12 @@ def validate(data, masthead=None):
     if reply is not None:
         due = data['summary'].get('reply_by')
         if not due or not due.strip(): raise ValueError('summary.reply_by에 회신 기한을 입력해 주세요.')
-        first_event = next((d for d, _, _ in dates_in(data['summary']['when'], year) if d), None)
-        due_date = next((d for d, _, _ in dates_in(due, first_event.year if first_event else year) if d), None)
+        first_event = first_date(data['summary']['when'], year)
+        due_date = first_date(due, first_event.year if first_event else year)
         if first_event and due_date and due_date >= first_event:
             raise ValueError('deadline: 회신 기한을 행사보다 앞선 날짜로 고쳐 주세요.')
+        if not first_event or not due_date:
+            confirm.append('행사 날짜와 회신 기한을 비교할 수 없어요. 날짜와 순서를 확인해 주세요.')
         include = (reply.get('privacy') or {}).get('include')
         if include is None:
             confirm.append('동의서에 학생·보호자 이름과 서명을 받아요. 개인정보 수집·이용 동의 문구를 넣을지 정해 주세요.')
@@ -242,7 +293,7 @@ def build(data, target, base=None):
         tbl = styles[0].getparent(); at = tbl.index(styles[0]); first = tbl.findall('hp:tr', NS).index(styles[0])
         last = len(items) - 1
         for n, item in enumerate(items):
-            r = copy.deepcopy(styles[0] if n == 0 else styles[-1] if n == last else styles[1])
+            r = copy.deepcopy(styles[-1] if n == last else styles[0] if n == 0 else styles[1])
             for a in r.iter('{%s}cellAddr' % NS['hp']): a.set('rowAddr', str(first + n))
             for t in r.iter(T):
                 if t.text and '{{ITEM_LABEL}}' in t.text: t.text = t.text.replace('{{ITEM_LABEL}}', item.get('label', ''))
@@ -260,6 +311,7 @@ def build(data, target, base=None):
         tbl.set('rowCnt', str(first + len(items)))
         heights = [int(tr.find('hp:tc/hp:cellSz', NS).get('height')) for tr in tbl.findall('hp:tr', NS)]
         tbl.find('hp:sz', NS).set('height', str(sum(heights)))
+        return tbl
 
     m = data.get('masthead') or {}
     phones = [p if p.strip() else CONFIRM for p in (m.get('phones') or [])] + [CONFIRM, CONFIRM]
@@ -270,11 +322,9 @@ def build(data, target, base=None):
     fill('{{TITLE}}', data['title'])
     repeat('{{GREETING}}', data.get('greeting') or [])
     fill('{{ITEMS_HEAD}}', data.get('items_title') or '< 안내 내용 >')
-    item_rows(data['items'])
+    table = item_rows(data['items'])
     repeat('{{NOTE}}', [x if x.lstrip().startswith('※') else '※ ' + x for x in data.get('notes') or []])
     sections(data.get('sections') or [])
-    table = next(t for t in sec.iter(T) if t.text == '구분')
-    while E.QName(table).localname != 'tbl': table = table.getparent()
     table.find('hp:outMargin', NS).set('bottom', str(TABLE_GAP))  # 빈 줄 대신 표 아래 바깥 여백으로 띄운다
     fill('{{DATE}}', data.get('issue_date') or f'{today.year}년 {today.month}월    일')
     head_p = para_of(holder('{{HEAD}}'))
@@ -343,7 +393,8 @@ def main():
         if a.preview: paths.append(a.preview.resolve())
         if len(paths) != len(set(paths)):
             raise ValueError('입력 파일, 한글 파일, 미리보기 파일을 서로 다른 경로로 지정해 주세요.')
-        try: data = json.loads(a.input.read_text())
+        try: data = json.loads(a.input.read_text(encoding='utf-8'))
+        except UnicodeDecodeError: raise ValueError('JSON 파일을 UTF-8 형식으로 저장해 주세요.')
         except json.JSONDecodeError as e: raise ValueError(f'JSON {e.lineno}번째 줄의 형식을 확인해 주세요.')
         validate_types(data)
         template = resolve_template(data.get('template'), a.input.parent).resolve()

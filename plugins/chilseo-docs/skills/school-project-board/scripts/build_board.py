@@ -19,6 +19,7 @@ TEMPLATE = HERE.parent / 'assets' / 'board.html'
 WEEK = '월화수목금토일'
 STATUS = {'done': '결재 완료', 'review': '결재 중', 'draft': '작성 중', 'todo': '아직'}
 CONFIRM = '[확인 필요]'
+MAX_MONEY = 2**53 - 1
 DOC_NO = re.compile(r'^\S+-\d+$')
 DATE = re.compile(r'(?<!\d)(?:(\d{4})\.\s*)?(\d{1,2})\.\s*(\d{1,2})\.\s*\(([월화수목금토일])\)')
 
@@ -31,6 +32,10 @@ def validate_data(data):
     """보드 자료의 모양과 선택값을 확인하고, 생략한 목록은 빈 목록으로 둔다."""
     if not isinstance(data, dict):
         raise ValueError('JSON 맨 위에는 객체를 넣어 주세요.')
+    try:
+        json.dumps(data, ensure_ascii=False).encode('utf-8')
+    except UnicodeEncodeError:
+        raise ValueError('입력 글자에 올바르지 않은 유니코드가 있어요. 해당 글자를 다시 입력해 주세요.')
 
     def need_text(key):
         if not isinstance(data.get(key), str) or not data[key].strip():
@@ -45,8 +50,8 @@ def validate_data(data):
             raise ValueError(f'{where} 날짜를 YYYY-MM-DD로 고쳐 주세요.')
 
     def need_int(where, value):
-        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-            raise ValueError(f'{where}에 0 이상의 정수를 넣어 주세요.')
+        if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= MAX_MONEY:
+            raise ValueError(f'{where}에 0 이상 {MAX_MONEY:,} 이하의 정수를 넣어 주세요.')
 
     for key in ('school', 'project', 'updated'):
         need_text(key)
@@ -114,6 +119,9 @@ def validate_data(data):
                     isinstance(spend.get(k), str) and spend[k] for k in ('doc', 'name')):
                 raise ValueError(f'{row["name"]}의 spend에는 doc, name, 0 이상의 amount를 넣어 주세요.')
             need_int(f'{row["name"]}의 spend amount', spend.get('amount'))
+    if (sum(row['allocated'] for row in data['ledger']) > MAX_MONEY or
+            sum(s['amount'] for row in data['ledger'] for s in row['spend']) > MAX_MONEY):
+        raise ValueError(f'장부의 편성액 합계와 집행 합계를 각각 {MAX_MONEY:,}원 이하로 넣어 주세요.')
     for key in ('schedule', 'log'):
         for i, row in enumerate(data[key], 1):
             field = 'title' if key == 'schedule' else 'text'
@@ -146,10 +154,11 @@ def strings(node):
 
 
 def weekday_errors(data):
-    year = day(data['updated']).year
     bad = []
     for s in strings(data):
+        year = day(data['updated']).year
         for y, m, d, w in DATE.findall(s):
+            if y: year = int(y)
             try: real = WEEK[dt.date(int(y or year), int(m), int(d)).weekday()]
             except ValueError: bad.append(f'{m}. {d}. 없는 날짜'); continue
             if real != w: bad.append(f'{m}. {d}.({w}) → ({real})')
@@ -218,6 +227,7 @@ def amounts(data):
 
 def check(data):
     validate_data(data)
+    draft_results = drafts(data)
     out = []
     add = lambda id_, label, st, detail: out.append({'id': id_, 'label': label, 'status': st, 'detail': detail})
     ids = {d['id'] for d in data['docs']}
@@ -258,7 +268,7 @@ def check(data):
 
     if 'guide' in data: out.append(guide_check(data))
 
-    for doc, _, res in drafts(data):
+    for doc, _, res in draft_results:
         left = [r for r in res if r['status'] != 'ok']
         add('기안문', f"{doc['kind']} 기안문", gm.overall(res),
             '; '.join(f"{r['label']}: {r['detail']}" for r in left) if left else f'기안문 검사 {len(res)}개를 모두 통과했어요.')

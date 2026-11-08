@@ -18,6 +18,51 @@ blocking=True 인 항목이 하나라도 실패하면 산출물을 내보내지 
 from __future__ import annotations
 import re, datetime, dataclasses
 
+import os, shutil, subprocess, sys
+from pathlib import Path
+
+
+def _venv_python(folder):
+    return folder / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+
+
+def _python_candidates():
+    configured = os.environ.get('CHILSEO_PYTHON')
+    home = Path(os.environ.get('CHILSEO_HOME') or Path.home() / '.chilseo').expanduser()
+    return ([configured] if configured else []) + [
+        _venv_python(home / 'venv'), _venv_python(Path(__file__).resolve().parent.parent / '.venv'),
+        _venv_python(Path.cwd() / '.venv')]
+
+
+def _bootstrap():
+    if 'CHILSEO_BOOTSTRAPPED' not in os.environ:
+        for candidate in _python_candidates():
+            executable = shutil.which(str(candidate))
+            if not executable or os.path.normcase(os.path.abspath(executable)) == os.path.normcase(os.path.abspath(sys.executable)):
+                continue
+            try:
+                check = subprocess.run([executable, '-c', 'import lxml'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if check.returncode == 0:
+                    env = os.environ.copy()
+                    env['CHILSEO_BOOTSTRAPPED'] = '1'
+                    sys.exit(subprocess.run([executable, *sys.argv], env=env).returncode)
+            except OSError:
+                continue
+    requirements = Path(__file__).resolve().parent.parent / 'requirements.txt'
+    requirements_arg = f'"{requirements}"' if ' ' in str(requirements) else str(requirements)
+    print('문서를 만들려면 lxml과 python-hwpx가 필요해요.\n'
+          "Claude Code에서 먼저 '시작하기'(school-start)를 실행해 주세요.\n"
+          f'직접 설치하려면 다음 명령을 실행해 주세요: python3 -m pip install -r {requirements_arg}\n'
+          'externally-managed-environment(시스템 설치 제한) 오류가 나면 '
+          "'시작하기'로 별도 설치 폴더를 만들어 주세요.", file=sys.stderr)
+    sys.exit(2)
+
+
+try:
+    from lxml import etree as E
+except ImportError:
+    _bootstrap()
+
 KOR_DOW = "월화수목금토일"
 ROMAN = "ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ"
 
@@ -288,7 +333,24 @@ def report(path, days=None, required=None):
 
 
 if __name__ == "__main__":
-    import sys
+    if len(sys.argv) == 1 or any(p.startswith('-') for p in sys.argv[1:]):
+        print('검사할 파일 경로를 입력해 주세요: python gate.py 파일.hwpx', file=sys.stderr)
+        sys.exit(2)
+    status = 0
     for p in sys.argv[1:]:
-        body, verdict, _ = report(p)
+        try:
+            with open(p, 'rb'):
+                pass
+            body, verdict, blocked = report(p)
+        except OSError:
+            print(f'파일을 열 수 없어요: {p}', file=sys.stderr)
+            status = 2
+            continue
+        except Exception:
+            print(f'파일을 검사할 수 없어요: {p}', file=sys.stderr)
+            status = max(status, 1)
+            continue
         print(f"\n▶ {p}\n{body}\n  → {verdict}")
+        if blocked:
+            status = max(status, 1)
+    sys.exit(status)

@@ -5,9 +5,50 @@ The template must be shaped by clean_template.py: masthead (children 0..2),
 a sample paragraph (child 3) and a sample table (child 4) in section0.
 """
 from __future__ import annotations
-import argparse, copy, datetime, hashlib, json, math, re, subprocess, sys, zipfile
+import argparse, copy, datetime, hashlib, json, math, os, re, shutil, subprocess, sys, zipfile
 from pathlib import Path
-from lxml import etree as E
+
+
+def _venv_python(folder):
+    return folder / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+
+
+def _python_candidates():
+    configured = os.environ.get('CHILSEO_PYTHON')
+    home = Path(os.environ.get('CHILSEO_HOME') or Path.home() / '.chilseo').expanduser()
+    return ([configured] if configured else []) + [
+        _venv_python(home / 'venv'), _venv_python(Path(__file__).resolve().parent.parent / '.venv'),
+        _venv_python(Path.cwd() / '.venv')]
+
+
+def _bootstrap():
+    if 'CHILSEO_BOOTSTRAPPED' not in os.environ:
+        for candidate in _python_candidates():
+            executable = shutil.which(str(candidate))
+            if not executable or os.path.normcase(os.path.abspath(executable)) == os.path.normcase(os.path.abspath(sys.executable)):
+                continue
+            try:
+                check = subprocess.run([executable, '-c', 'import lxml'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if check.returncode == 0:
+                    env = os.environ.copy()
+                    env['CHILSEO_BOOTSTRAPPED'] = '1'
+                    sys.exit(subprocess.run([executable, *sys.argv], env=env).returncode)
+            except OSError:
+                continue
+    requirements = Path(__file__).resolve().parent.parent / 'requirements.txt'
+    requirements_arg = f'"{requirements}"' if ' ' in str(requirements) else str(requirements)
+    print('문서를 만들려면 lxml과 python-hwpx가 필요해요.\n'
+          "Claude Code에서 먼저 '시작하기'(school-start)를 실행해 주세요.\n"
+          f'직접 설치하려면 다음 명령을 실행해 주세요: python3 -m pip install -r {requirements_arg}\n'
+          'externally-managed-environment(시스템 설치 제한) 오류가 나면 '
+          "'시작하기'로 별도 설치 폴더를 만들어 주세요.", file=sys.stderr)
+    sys.exit(2)
+
+
+try:
+    from lxml import etree as E
+except ImportError:
+    _bootstrap()
 SCRIPTS = Path(__file__).resolve().parent
 SKILL = SCRIPTS.parent
 DEFAULT_TEMPLATE = SKILL/'templates'/'chilseo_plan_template.hwpx'
@@ -42,7 +83,7 @@ def formula_product(formula):
 def validate(data, masthead_text=None):
     if not isinstance(data,dict): raise ValueError('입력 JSON은 객체로 작성해 주세요')
     for key in ('title','pages'):
-        if not data.get(key): raise ValueError(f'Missing required field: {key}')
+        if not data.get(key): raise ValueError(f'{key} 항목을 입력해 주세요')
     if not isinstance(data['title'],str): raise ValueError('title은 글자로 입력해 주세요')
     if not isinstance(data['pages'],list) or any(not isinstance(p,list) or not p for p in data['pages']):
         raise ValueError('pages에는 비어 있지 않은 쪽 목록을 입력해 주세요')
@@ -61,12 +102,20 @@ def validate(data, masthead_text=None):
     if data.get('school') and masthead_text is not None and data['school'] not in masthead_text:
         raise ValueError('School name not found in the template masthead')
     if data.get('event_date'):datetime.date.fromisoformat(data['event_date'])
-    if data.get('budget'):
-        items,total=budget_items(data['budget'])
+    if 'budget' in data:
+        budget=data['budget']
+        if not isinstance(budget,dict) or not budget:
+            raise ValueError('budget에 예산 항목과 합계를 입력해 주세요')
+        if 'items' in budget:
+            if not isinstance(budget['items'],list) or not all(isinstance(i,dict) for i in budget['items']):
+                raise ValueError('budget의 items를 예산 항목 목록으로 입력해 주세요')
+        elif any(type(budget.get(k)) is not int for k in ('unit_price','headcount','total')):
+            raise ValueError('budget의 unit_price, headcount, total을 정수로 입력해 주세요')
+        items,total=budget_items(budget)
         if not items or type(total) is not int or total<=0: raise ValueError('Budget values must be positive integers')
         for item in items:
             if type(item.get('amount')) is not int or item['amount']<=0: raise ValueError('Budget values must be positive integers')
-            if item.get('formula') and formula_product(item['formula'])!=item['amount']: raise ValueError('Budget calculation mismatch')
+            if item.get('formula') and (not isinstance(item['formula'],str) or formula_product(item['formula'])!=item['amount']): raise ValueError('Budget calculation mismatch')
         if sum(i['amount'] for i in items)!=total: raise ValueError('Budget calculation mismatch')
         budget_tables=[block for page in data['pages'] for block in page
                        if block['kind']=='table' and any('금액' in str(c) for c in block['rows'][0])]
@@ -77,6 +126,16 @@ def validate(data, masthead_text=None):
         for item in items:
             if item.get('formula') and not any(item['formula'] in c for c in cells):
                 raise ValueError('Budget metadata and displayed formula differ')
+            if item.get('formula') and not any(
+                    any(item['formula'] in str(c) for c in row) and
+                    any(re.search(r'(?<![\d,])'+re.escape(f"{item['amount']:,}")+r'(?![\d,])',str(c)) for c in row)
+                    for table in budget_tables for row in table['rows'][1:]):
+                raise ValueError('Budget formula and amount displayed in different rows: 예산 표의 산출식과 금액을 같은 행에 입력해 주세요')
+    if 'slots' in data and (not isinstance(data['slots'],list) or any(
+            not isinstance(slot,dict) or not isinstance(slot.get('periods'),str) or
+            not isinstance(slot.get('classes'),list) or
+            any(not isinstance(c,str) for c in slot['classes']) for slot in data['slots'])):
+        raise ValueError('slots의 periods와 classes 목록을 확인해 주세요')
     if data.get('slots'):
         classes=[c for slot in data['slots'] for c in slot['classes']]
         if len(set(classes))!=len(classes): raise ValueError('Duplicate class in timetable')
@@ -117,6 +176,7 @@ def load_template(template):
     return parts,sec,masthead
 
 def build(data, target, base=None):
+    if not isinstance(data,dict): raise ValueError('입력 JSON은 객체로 작성해 주세요')
     template=resolve_template(data.get('template'),base)
     parts,sec,masthead=load_template(template)
     validate(data,masthead)

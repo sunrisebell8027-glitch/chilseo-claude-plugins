@@ -33,6 +33,13 @@ class CheckCopyTests(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertIn('찾을 수 없어요', stderr.getvalue())
 
+    def test_skips_korean_css_content_even_when_style_is_inline(self):
+        html = '<style>.notice::after { content: "저장되었습니다"; }</style><p>저장되었습니다.</p>'
+        findings = check_copy.check_text(html, strict=False)
+        self.assertTrue(findings)
+        self.assertTrue(all(item[1] > html.index('</style>') + len('</style>')
+                            for item in findings))
+
 
 if __name__ == '__main__':
     unittest.main()

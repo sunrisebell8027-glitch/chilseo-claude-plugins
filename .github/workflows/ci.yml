@@ -1,0 +1,65 @@
+# 밀어 넣을 때마다 시험을 돌리고, v* 태그에는 Claude 앱용 스킬 zip을 Releases에 붙인다.
+name: tests
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 패키지 설치 (lxml, python-hwpx)
+        run: python -m pip install -r plugins/chilseo-docs/skills/school-plan-hwpx/requirements.txt
+      - name: 시험
+        run: |
+          set -e
+          for d in plugins/*/skills/*/tests tools/tests; do
+            echo "== $d"
+            python -m unittest discover -s "$d"
+          done
+      - name: 예시 만들기
+        run: |
+          set -e
+          K=plugins/chilseo-docs/skills
+          mkdir -p out
+          python $K/school-plan-hwpx/scripts/build.py $K/school-plan-hwpx/examples/sample_reading_week.json -o out/계획서.hwpx
+          python $K/school-gongmun-draft/scripts/build_gongmun.py $K/school-gongmun-draft/examples/sample_science_club.json -o out/기안문.html
+          for e in $K/school-newsletter/examples/*.json; do
+            python $K/school-newsletter/scripts/build_newsletter.py "$e" -o "out/$(basename "$e" .json).hwpx" --preview "out/$(basename "$e" .json).html"
+          done
+          for e in $K/school-project-board/examples/*.json; do
+            python $K/school-project-board/scripts/build_board.py "$e" -o "out/$(basename "$e" .json).html"
+          done
+      - name: 스킬 zip 만들기
+        run: python tools/make_skill_zips.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skill-zips
+          path: dist/*.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/make_skill_zips.py
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
