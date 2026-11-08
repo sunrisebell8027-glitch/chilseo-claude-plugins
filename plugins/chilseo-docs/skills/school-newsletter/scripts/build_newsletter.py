@@ -28,7 +28,7 @@ def resolve_template(name=None, base=None):
     p = Path(name).expanduser()
     for c in ([p] if p.is_absolute() else [Path(base or '.')/p, SKILL/'templates'/p]):
         if c.exists(): return c
-    raise FileNotFoundError(f'Template not found: {name}')
+    raise FileNotFoundError(f'양식 파일을 찾을 수 없어요: {name}. 경로를 확인해 주세요.')
 
 def dates_in(text, year=None):
     """Yield (date, weekday-as-written, raw) for each dated mention; a short date takes the last full date's year."""
@@ -41,13 +41,15 @@ def dates_in(text, year=None):
 
 def strings(data):
     """Every text the notice shows, in reading order."""
-    out = [data['title'], *data.get('greeting', [])]
+    out = [data['title'], data.get('items_title', ''), data.get('issue_date', ''), *data.get('greeting', [])]
     out += [f'{i.get("label", "")} {i["text"]}' for i in data.get('items', [])] + data.get('notes', [])
     for sec in data.get('sections') or []: out += [sec.get('title', ''), *sec.get('lines', [])]
     s = data.get('summary') or {}
     out += [s.get('when', ''), s.get('reply_by', ''), *s.get('bring', [])]
     r = data.get('reply') or {}
     out += [r.get('title', ''), r.get('pledge', ''), r.get('note', ''), *r.get('consents', []), *r.get('fields', [])]
+    p = r.get('privacy') or {}
+    if p.get('include') is True: out += [p.get(k, '') for k in ('items', 'purpose', 'retention', 'refusal')]
     return [x for x in out if x]
 
 def consent_lines(reply):
@@ -58,63 +60,121 @@ def consent_lines(reply):
 def privacy_lines(reply):
     p = reply.get('privacy') or {}
     if p.get('include') is not True: return []
-    v = lambda k: p.get(k) or CONFIRM
+    v = lambda k: p.get(k, "").strip() or CONFIRM
     return [f'※ 개인정보 수집·이용 안내: 수집 항목({v("items")}), 이용 목적({v("purpose")}), 보유 기간({v("retention")})',
             f'   동의하지 않을 수 있으며, 동의하지 않으면 {v("refusal")}.',
             '   개인정보 수집·이용에 동의합니까?   □ 동의함   □ 동의하지 않음']
 
 PAGE_BODY = 71718  # A4 본문 높이(HWPUNIT): 84188 - 위 4251 - 아래 2834 - 머리말 1134 - 꼬리말 4251
 
+def line_count(text, per_line):
+    return sum(max(1, -(-len(part) // per_line)) for part in text.split('\n'))
+
+def item_line_count(item):
+    return max(line_count(item['text'], 42), line_count(item['label'], 8))
+
 def page_height(data):
     """양식의 줄 높이로 어림한 본문 높이. 한글이 실제로 나누는 쪽과 조금 다를 수 있다."""
-    def lines(text, per_line):
-        return sum(max(1, -(-len(part) // per_line)) for part in text.split('\n'))
+    lines = line_count
     h = 7800 + 4200  # 머리 상자, 제목 상자
     h += sum(1920 * lines(g, 44) for g in data.get('greeting') or [])  # 첫 줄 짧게 들여쓰기
     h += 2080 + 2565  # 표 위 제목, 구분·내용 줄
-    h += sum(2565 + 1883 * (lines(i['text'], 42) - 1) for i in data['items'])
+    h += sum(2565 + LINE_EXTRA * (item_line_count(i) - 1) for i in data['items'])
     h += TABLE_GAP  # 표 아래 바깥 여백
     h += sum(1600 * lines(n, 52) for n in data.get('notes') or [])
     for block in data.get('sections') or []:
         h += 2080 + sum(1920 * lines(l, 44) for l in block.get('lines', []))
     h += 1750 + 2250  # 발행일, 학교장
     reply = data.get('reply')
-    if reply:
+    if reply is not None:
         h += 1000 + 3166 + 1440 + 4462 + 1320 + 2 * 1400  # 자르는 선, 제목, 학년·반, 동의 표, 확인 문장, 서명 두 줄
+        h += 1320 * (lines(reply.get('pledge') or '상기 내용을 확인하고 동의서를 제출합니다.', 44) - 1)
         h += sum(1600 * lines(l, 52) for l in consent_lines(reply) + privacy_lines(reply))
         if reply.get('note'): h += 1600 * lines(reply['note'], 52)
     return h
 
+def validate_types(data):
+    def obj(value, path):
+        if not isinstance(value, dict): raise ValueError(f'{path}은 객체로 입력해 주세요.')
+    def text(value, path, required=False):
+        if not isinstance(value, str) or (required and not value.strip()):
+            raise ValueError(f'{path}에 {"비어 있지 않은 " if required else ""}글자를 입력해 주세요.')
+        if re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]', value):
+            raise ValueError(f'{path}에서 사용할 수 없는 제어 문자를 지워 주세요.')
+    def texts(value, path):
+        if not isinstance(value, list): raise ValueError(f'{path}은 목록으로 입력해 주세요.')
+        for i, v in enumerate(value): text(v, f'{path}[{i}]')
+    obj(data, 'JSON')
+    for k in ('school', 'title'): text(data.get(k), k, True)
+    if len(data['title']) > 60: raise ValueError('title을 60자 이내로 줄여 주세요.')
+    for k in ('items_title', 'doc_date', 'issue_date', 'template', 'page_title'):
+        if data.get(k) is not None: text(data[k], k)
+    for k in ('greeting', 'notes'):
+        if k in data: texts(data[k], k)
+    items = data.get('items')
+    if not isinstance(items, list) or not items: raise ValueError('items에 안내 항목을 하나 이상 입력해 주세요.')
+    for i, item in enumerate(items):
+        path = f'items[{i}]'; obj(item, path)
+        text(item.get('label'), path + '.label', True); text(item.get('text'), path + '.text', True)
+        if len(item['label']) > 20: raise ValueError(f'{path}.label을 20자 이내로 줄여 주세요.')
+    summary = data.get('summary'); obj(summary, 'summary')
+    text(summary.get('when'), 'summary.when', True)
+    if 'bring' in summary: texts(summary['bring'], 'summary.bring')
+    if 'reply_by' in summary: text(summary['reply_by'], 'summary.reply_by')
+    if not isinstance(data.get('sections', []), list): raise ValueError('sections는 목록으로 입력해 주세요.')
+    for i, section in enumerate(data.get('sections', [])):
+        path = f'sections[{i}]'; obj(section, path); text(section.get('title'), path + '.title', True)
+        if 'lines' in section: texts(section['lines'], path + '.lines')
+    for key in ('masthead', 'reply'):
+        if data.get(key) is not None: obj(data[key], key)
+    m = data.get('masthead') or {}
+    if 'phones' in m: texts(m['phones'], 'masthead.phones')
+    if 'homepage' in m: text(m['homepage'], 'masthead.homepage')
+    r = data.get('reply') or {}
+    for k in ('title', 'pledge', 'note'):
+        if k in r: text(r[k], 'reply.' + k)
+    if len(r.get('title', '')) > 60: raise ValueError('reply.title을 60자 이내로 줄여 주세요.')
+    for k in ('consents', 'fields'):
+        if k in r: texts(r[k], 'reply.' + k)
+    if 'privacy' in r:
+        obj(r['privacy'], 'reply.privacy'); privacy = r['privacy']
+        if privacy.get('include') is not None and type(privacy['include']) is not bool:
+            raise ValueError('reply.privacy.include는 true, false 또는 null로 입력해 주세요.')
+        for k in ('items', 'purpose', 'retention', 'refusal'):
+            if k in privacy: text(privacy[k], 'reply.privacy.' + k)
+    if 'example' in data and type(data['example']) is not bool: raise ValueError('example은 true 또는 false로 입력해 주세요.')
+
 def validate(data, masthead=None):
     """Raise ValueError on what must be fixed; return the list of things to confirm."""
+    validate_types(data)
     for key in ('title', 'school', 'items', 'summary'):
         if not data.get(key): raise ValueError(f'Missing required field: {key}')
     if masthead is not None and data['school'] not in masthead:
-        raise ValueError('School name not found in the template masthead')
+        raise ValueError('School: 학교 이름이 양식 머리말과 같도록 확인해 주세요.')
     if not data['summary'].get('when'): raise ValueError('summary.when is required (보호자가 맨 위에서 볼 날짜)')
-    year = None
-    if data.get('doc_date'): year = datetime.date.fromisoformat(data['doc_date']).year
+    try: year = datetime.date.fromisoformat(data['doc_date']).year if data.get('doc_date') else datetime.date.today().year
+    except ValueError: raise ValueError('doc_date를 YYYY-MM-DD 형식의 실제 날짜로 입력해 주세요.')
     for text in strings(data):
         for d, dow, raw in dates_in(text, year):
-            if d is None: raise ValueError(f'Invalid date: {raw}')
-            if DOW[d.weekday()] != dow: raise ValueError(f'Weekday mismatch: {raw} is {DOW[d.weekday()]}')
+            if d is None: raise ValueError(f'실제 날짜로 고쳐 주세요: {raw}')
+            if DOW[d.weekday()] != dow: raise ValueError(f'Weekday: {raw}의 요일을 {DOW[d.weekday()]}요일로 고쳐 주세요.')
     confirm = []
     reply = data.get('reply')
-    if reply:
+    if reply is not None:
         due = data['summary'].get('reply_by')
-        if not due: raise ValueError('summary.reply_by is required when there is a reply form')
+        if not due or not due.strip(): raise ValueError('summary.reply_by에 회신 기한을 입력해 주세요.')
         first_event = next((d for d, _, _ in dates_in(data['summary']['when'], year) if d), None)
         due_date = next((d for d, _, _ in dates_in(due, first_event.year if first_event else year) if d), None)
         if first_event and due_date and due_date >= first_event:
-            raise ValueError('Reply deadline must come before the event')
+            raise ValueError('deadline: 회신 기한을 행사보다 앞선 날짜로 고쳐 주세요.')
         include = (reply.get('privacy') or {}).get('include')
         if include is None:
             confirm.append('동의서에 학생·보호자 이름과 서명을 받아요. 개인정보 수집·이용 동의 문구를 넣을지 정해 주세요.')
         elif include is True:
             confirm += [f'개인정보 안내의 {k} 칸' for k in ('items', 'purpose', 'retention', 'refusal')
-                        if not (reply['privacy'].get(k))]
+                        if not reply['privacy'].get(k, '').strip()]
     m = data.get('masthead') or {}
-    if len(m.get('phones') or []) < 2 or not m.get('homepage'):
+    if len(m.get('phones') or []) < 2 or not all(p.strip() for p in m['phones'][:2]) or not m.get('homepage', '').strip():
         confirm.append('머리말의 교무실·행정실 전화번호와 누리집 주소를 학교설정에서 채워 주세요.')
     over = page_height(data) - PAGE_BODY
     if over > 0:
@@ -124,6 +184,7 @@ def validate(data, masthead=None):
     return confirm
 
 def build(data, target, base=None):
+    validate_types(data)
     template = resolve_template(data.get('template'), base)
     with zipfile.ZipFile(template) as z: parts = {i.filename: z.read(i.filename) for i in z.infolist()}
     sec = E.fromstring(parts['Contents/section0.xml'])
@@ -193,7 +254,7 @@ def build(data, target, base=None):
                     if tt.text and '{{ITEM_TEXT}}' in tt.text: tt.text = tt.text.replace('{{ITEM_TEXT}}', line)
                 p.addprevious(q)
             p.getparent().remove(p)
-            for sz in r.iter('{%s}cellSz' % NS['hp']): sz.set('height', str(int(sz.get('height')) + LINE_EXTRA * (len(lines) - 1)))
+            for sz in r.iter('{%s}cellSz' % NS['hp']): sz.set('height', str(int(sz.get('height')) + LINE_EXTRA * (item_line_count(item) - 1)))
             tbl.insert(at + n, r)
         for row in styles: tbl.remove(row)
         tbl.set('rowCnt', str(first + len(items)))
@@ -201,11 +262,11 @@ def build(data, target, base=None):
         tbl.find('hp:sz', NS).set('height', str(sum(heights)))
 
     m = data.get('masthead') or {}
-    phones = (m.get('phones') or []) + [CONFIRM, CONFIRM]
+    phones = [p if p.strip() else CONFIRM for p in (m.get('phones') or [])] + [CONFIRM, CONFIRM]
     school_year = today.year if today.month >= 3 else today.year - 1
     fill('{{SHORT}}', re.sub(r'(초|중|고)(등)?학교$', r'\1', school))  # 칠서초등학교 -> 칠서초, to fit the narrow cell
     fill('{{YEAR}}', str(school_year))
-    fill('{{TEL1}}', phones[0]); fill('{{TEL2}}', phones[1]); fill('{{HOMEPAGE}}', m.get('homepage') or CONFIRM)
+    fill('{{TEL1}}', phones[0]); fill('{{TEL2}}', phones[1]); fill('{{HOMEPAGE}}', m.get('homepage', '').strip() or CONFIRM)
     fill('{{TITLE}}', data['title'])
     repeat('{{GREETING}}', data.get('greeting') or [])
     fill('{{ITEMS_HEAD}}', data.get('items_title') or '< 안내 내용 >')
@@ -219,7 +280,7 @@ def build(data, target, base=None):
     head_p = para_of(holder('{{HEAD}}'))
     fill('{{HEAD}}', ' '.join(school + '장'))
     reply = data.get('reply')
-    if reply:
+    if reply is not None:
         fill('{{REPLY_TITLE}}', reply.get('title') or f'『{data["title"]}』 참가 동의서')
         note_style = para_of(holder('{{REPLY_NOTE}}')).get('paraPrIDRef')
         pledge = repeat('{{PLEDGE}}', [reply.get('pledge') or '상기 내용을 확인하고 동의서를 제출합니다.']
@@ -254,14 +315,17 @@ def build(data, target, base=None):
               'checks': [f.__dict__ for f in fs], 'blocked': bool(blocked), 'needs_confirmation': confirm, 'visual_review': 'pending'}
     target.with_suffix('.validation.json').write_text(json.dumps(report, ensure_ascii=False, indent=2))
     target.with_suffix('.txt').write_text('\n'.join(texts))
-    if blocked: raise ValueError('Output validation failed: ' + str([f.detail for f in blocked]))
+    if blocked: raise ValueError('출력 검사에 실패했어요. 내용을 확인해 주세요: ' + str([f.detail for f in blocked]))
     return report
 
 def preview(data, confirm, target):
     page = {k: data.get(k) for k in ('school', 'title', 'greeting', 'items', 'notes', 'sections', 'summary', 'issue_date', 'example')}
     reply = data.get('reply')
-    page['reply'] = reply and {'title': reply.get('title') or f'『{data["title"]}』 참가 동의서', 'pledge': reply.get('pledge'), 'note': reply.get('note'),
-                               'privacy': consent_lines(reply) + privacy_lines(reply), 'privacy_include': (reply.get('privacy') or {}).get('include')}
+    page['reply'] = {'title': reply.get('title') or f'『{data["title"]}』 참가 동의서', 'pledge': reply.get('pledge'), 'note': reply.get('note'),
+                     'privacy': consent_lines(reply) + privacy_lines(reply), 'privacy_include': (reply.get('privacy') or {}).get('include')} if reply is not None else None
+    if not page['issue_date']:
+        day = datetime.date.fromisoformat(data['doc_date']) if data.get('doc_date') else datetime.date.today()
+        page['issue_date'] = f'{day.year}년 {day.month}월    일'
     page['confirm'] = confirm
     payload = json.dumps(page, ensure_ascii=False).replace('</', '<\\/')
     out = PREVIEW.read_text().replace('__PAGE_TITLE__', html.escape(data.get('page_title') or data['title'][:30]))
@@ -274,10 +338,20 @@ def main():
     ap.add_argument('--preview', type=Path, help='보호자용 미리보기 HTML도 만든다')
     a = ap.parse_args()
     try:
-        data = json.loads(a.input.read_text())
+        paths = [a.input.resolve(), a.output.resolve(), a.output.with_suffix('.txt').resolve(),
+                 a.output.with_suffix('.validation.json').resolve()]
+        if a.preview: paths.append(a.preview.resolve())
+        if len(paths) != len(set(paths)):
+            raise ValueError('입력 파일, 한글 파일, 미리보기 파일을 서로 다른 경로로 지정해 주세요.')
+        try: data = json.loads(a.input.read_text())
+        except json.JSONDecodeError as e: raise ValueError(f'JSON {e.lineno}번째 줄의 형식을 확인해 주세요.')
+        validate_types(data)
+        template = resolve_template(data.get('template'), a.input.parent).resolve()
+        if template in paths[1:]:
+            raise ValueError('양식 파일과 출력 파일을 서로 다른 경로로 지정해 주세요.')
         report = build(data, a.output, base=a.input.parent)
         if a.preview: preview(data, report['needs_confirmation'], a.preview)
-    except (ValueError, KeyError, FileNotFoundError) as e:
+    except (ValueError, KeyError, OSError, zipfile.BadZipFile, E.XMLSyntaxError, subprocess.CalledProcessError) as e:
         print(f'만들지 못했어요: {e}', file=sys.stderr); return 1
     print(json.dumps({'file': report['file'], 'package_checks': 'passed', 'needs_confirmation': report['needs_confirmation'],
                       'preview': str(a.preview) if a.preview else None, 'visual_review': 'pending'}, ensure_ascii=False, indent=1))

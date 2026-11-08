@@ -41,7 +41,7 @@ RULES = [
      r"(Error:|undefined|NaN|\bnull\b|Exception)",
      "무엇이 일어났고 어떻게 하면 되는지 쉬운 말로 알려 줘요"),
     ("수동형", "확인",
-     r"([가-힣]+(됐어요|되었어요)|(선택|등록|저장|입력|설정|배정|삭제|변경|추가|완료)된(?=\s))",
+     r"([가-힣]+(됐어요|됐습니다|되었어요|되었습니다)|(선택|등록|저장|입력|설정|배정|삭제|변경|추가|완료)된(?=\s))",
      "능동형으로: '설정했어요', '선택한 학생'. 안심·결과 안내·만료라면 그대로 둬요"),
     ("부정형", "확인",
      r"(수 없어요|없어요|안 ?돼요|불가)",
@@ -139,6 +139,12 @@ def main() -> int:
     parser.add_argument("targets", nargs="+", help="검사할 파일이나 폴더")
     parser.add_argument("--strict", action="store_true", help="참고 항목까지 보여 줘요")
     args = parser.parse_args()
+
+    missing = [target for target in args.targets if not Path(target).exists()]
+    if missing:
+        for target in missing:
+            print(f"찾을 수 없어요: {target}", file=sys.stderr)
+        return 1
 
     total = {"고칠 것": 0, "확인": 0, "참고": 0}
     checked = 0

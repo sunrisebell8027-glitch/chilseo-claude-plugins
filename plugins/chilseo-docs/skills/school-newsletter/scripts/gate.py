@@ -74,11 +74,16 @@ def check_open(path):
     from hwpx.document import HwpxDocument
     try:
         with zipfile.ZipFile(path) as z:
+            entries=z.infolist()
+            if not entries or entries[0].filename != "mimetype":
+                raise ValueError("mimetype이 첫 항목이 아닙니다")
+            if entries[0].compress_type != zipfile.ZIP_STORED:
+                raise ValueError("mimetype이 압축되어 있습니다")
+            if z.read(entries[0]) != b"application/hwp+zip":
+                raise ValueError("mimetype 내용이 올바르지 않습니다")
             if z.testzip():
                 raise ValueError("ZIP CRC mismatch")
             names=set(z.namelist())
-            if z.read("mimetype").strip()!=b"application/hwp+zip":
-                raise ValueError("Unexpected MIME type")
             roots={n:E.fromstring(z.read(n)) for n in names if n.endswith((".xml", ".hpf"))}
             manifest=roots["Contents/content.hpf"]
             for item in manifest.xpath('//*[local-name()="item"]'):
@@ -186,7 +191,7 @@ def check_attend(tabs, days=None):
                            f"출석부 날짜열 {len(dcols)}개 ≠ 운영일수 {days}")
         expect = 3 + len(dcols) + 2
         if t["cols"] != expect:
-            return Finding("attend", False, False,
+            return Finding("attend", False, True,
                            f"출석부 열 {t['cols']} ≠ 3+{len(dcols)}+2={expect}")
         return Finding("attend", True, True, f"출석부 {t['cols']}열 = 3+{len(dcols)}일+2 일치")
     return Finding("attend", True, True, "출석부 없음(건너뜀)")
@@ -253,9 +258,12 @@ def check_empty(paras, required=("제목",)):
 # ---------- 통합 ----------
 
 def run(path, days=None, required=None):
+    opened = check_open(path)
+    if not opened.ok:
+        return [opened], [opened]
     _, paras, tabs = _load(path)
     fs = [
-        check_open(path),
+        opened,
         check_residue(paras, tabs),
         check_budget(tabs),
         check_weekday(paras, tabs),

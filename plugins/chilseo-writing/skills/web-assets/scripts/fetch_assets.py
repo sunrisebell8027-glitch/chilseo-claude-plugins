@@ -39,7 +39,7 @@ def download(url: str, dest: Path) -> bool:
         with urllib.request.urlopen(req, timeout=60) as res:
             dest.write_bytes(res.read())
         return True
-    except (urllib.error.URLError, TimeoutError) as err:
+    except (urllib.error.URLError, TimeoutError, OSError) as err:
         print(f"  ✗ 받지 못했어요: {url} ({err})", file=sys.stderr)
         return False
 
@@ -116,11 +116,15 @@ def fetch_icons(vendor: Path, notices: Notices, kind: str, names: list[str]):
             "tabler/tabler-icons", "icons/outline/{n}.svg", "LICENSE", "MIT", "https://tabler.io/icons")
     print(f"▶ {kind} 아이콘 {len(names)}개")
     folder = vendor / kind
-    ok = [n for n in names if download(raw(repo, path_fmt.format(n=n)), folder / f"{n}.svg")]
+    safe_names = [n for n in names if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", n)]
+    rejected = len(names) - len(safe_names)
+    if rejected:
+        print(f"  ! 파일 이름으로 쓸 수 없는 아이콘 {rejected}개를 건너뛰었어요", file=sys.stderr)
+    ok = [n for n in safe_names if download(raw(repo, path_fmt.format(n=n)), folder / f"{n}.svg")]
     download(raw(repo, lic), folder / "LICENSE.txt")
     if ok:
         print(f"  ✓ {folder}/ 에 {', '.join(ok)}")
-    if len(ok) < len(names):
+    if len(ok) < len(safe_names):
         print(f"  ! 이름을 확인하세요: {home} 에서 검색할 수 있어요")
     notices.add(kind, f"""
 ## {"Lucide" if kind == "lucide" else "Tabler Icons"} (아이콘)

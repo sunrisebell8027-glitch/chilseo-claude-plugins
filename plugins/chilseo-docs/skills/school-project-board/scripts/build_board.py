@@ -8,7 +8,7 @@ is still open, and every 기안문 written into the board passes the 기안문 c
 The 길잡이 answers say which documents the project needs; a needed document
 that is not in the flow yet is a warning. The last lines say what to do now and next. A failed check writes no page.
 """
-import argparse, datetime as dt, json, re, sys
+import argparse, datetime as dt, html as html_lib, json, re, sys
 from pathlib import Path
 
 import build_gongmun as gm  # 기안문 스킬의 파일을 그대로 복사해 둔다(같은지 tests에서 본다)
@@ -38,6 +38,8 @@ def validate_data(data):
 
     def need_day(where, value):
         try:
+            if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+                raise ValueError
             day(value)
         except (TypeError, ValueError):
             raise ValueError(f'{where} 날짜를 YYYY-MM-DD로 고쳐 주세요.')
@@ -227,6 +229,7 @@ def check(data):
         for s in r['spend']: per_doc[s['doc']] = per_doc.get(s['doc'], 0) + s['amount']
     money, conflicts = amounts(data)
     wrong = conflicts + [f'{k}: 품의 {v:,}원 ≠ 장부 {per_doc.get(k, 0):,}원' for k, v in money.items() if per_doc.get(k, 0) != v]
+    wrong += [f'{k}: 품의 금액을 draft 또는 amounts에 넣어 주세요' for k in per_doc if k in ids and k not in money]
     if unknown or wrong: add('합계', '품의와 장부', 'fail', '; '.join(wrong + [f'없는 문서: {u}' for u in unknown]))
     else: add('합계', '품의와 장부', 'ok', '품의 금액과 장부 줄이 모두 맞아요.')
 
@@ -295,6 +298,9 @@ def say_steps(data):
     lines = [f"{name[x['state']]}: {x['do']}" + (f" ({x['doc']['title']}, {STATUS[x['doc']['status']]})" if x['doc'] else '') +
              (f" - {x['tip']}" if x['state'] == 'now' else '') for x in st if x['state'] in name]
     if lines:
+        if len(lines) == 1:
+            unanswered = any(guide.asked(q, data['guide']) and q['id'] not in data['guide'] for q in guide.QUESTIONS)
+            lines.append('다음 할 일: ' + ('길잡이의 남은 질문에 답하면 알려 드려요.' if unanswered else '없어요.'))
         return lines
     return ['지금 할 일: 필요한 문서를 모두 마쳤어요.', '다음 할 일: 없어요.']
 
@@ -327,7 +333,8 @@ def page_data(data, results):
 def render(data, results):
     html = TEMPLATE.read_text(encoding='utf-8')
     payload = json.dumps(page_data(data, results), ensure_ascii=False).replace('</', '<\\/')
-    return html.replace('__PAGE_TITLE__', data.get('page_title') or data['project'] + ' 보드').replace('"__BOARD_DATA__"', payload)
+    title = html_lib.escape(data.get('page_title') or data['project'] + ' 보드')
+    return html.replace('__PAGE_TITLE__', title).replace('"__BOARD_DATA__"', payload)
 
 
 def main():
@@ -349,8 +356,13 @@ def main():
         print('고칠 곳이 있어서 화면을 만들지 않았어요.', file=sys.stderr); sys.exit(1)
     for line in say_steps(data): print(line)
     if a.check or not a.output: return
-    out = Path(a.output); out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(data, results), encoding='utf-8'); print(out)
+    out = Path(a.output)
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(render(data, results), encoding='utf-8')
+    except OSError as e:
+        print(f'화면을 저장하지 못했어요: 저장 경로를 확인해 주세요. {e}', file=sys.stderr); sys.exit(2)
+    print(out)
 
 
 if __name__ == '__main__': main()

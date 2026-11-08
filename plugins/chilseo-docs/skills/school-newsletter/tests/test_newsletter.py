@@ -1,4 +1,4 @@
-import copy,json,re,sys,tempfile,unittest,zipfile
+import copy,datetime,json,re,shutil,subprocess,sys,tempfile,unittest,zipfile
 from pathlib import Path
 from lxml import etree as E
 R=Path(__file__).resolve().parents[1]
@@ -64,6 +64,15 @@ class NewsletterTests(unittest.TestCase):
   self.assertFalse(any('개인정보' in c for c in report['needs_confirmation']))
   self.data['reply']['privacy']={'include':True}
   self.assertTrue(any('retention' in c for c in b.build(self.data,self.out)['needs_confirmation']))
+ def test_whitespace_privacy_fields_need_confirmation(self):
+  self.data['reply']['privacy']={'include':True,'items':' ','purpose':'\t','retention':'','refusal':'  '}
+  report=b.build(self.data,self.out);text=body(self.out)
+  for key in ('items','purpose','retention','refusal'):
+   self.assertTrue(any(key in c for c in report['needs_confirmation']))
+  self.assertIn('수집 항목([확인 필요])',text)
+  self.assertIn('동의하지 않으면 [확인 필요]',text)
+  page=Path(self.tmp.name)/'미리보기.html';b.preview(self.data,report['needs_confirmation'],page)
+  self.assertIn('수집 항목([확인 필요])',page.read_text())
  def test_sections_sit_between_notes_and_date(self):
   self.data['sections']=[{'title':'< 가정에서 챙겨 주세요 >','lines':['1. 멀미약은 가정에서 먹여 보내 주십시오.']}]
   b.build(self.data,self.out);text=body(self.out)
@@ -93,6 +102,9 @@ class NewsletterTests(unittest.TestCase):
  def test_weekday_mismatch_rejected(self):
   self.data['items'][0]['text']='2026. 12. 9.(목) 09:00~15:00'
   with self.assertRaisesRegex(ValueError,'Weekday'):b.validate(self.data)
+ def test_weekday_in_issue_date_rejected(self):
+  self.data['issue_date']='2026. 12. 9.(목)'
+  with self.assertRaisesRegex(ValueError,'Weekday'):b.validate(self.data)
  def test_reply_deadline_before_event(self):
   self.data['summary']['reply_by']='2026. 12. 10.(목)'
   with self.assertRaisesRegex(ValueError,'deadline'):b.validate(self.data)
@@ -108,7 +120,72 @@ class NewsletterTests(unittest.TestCase):
   data=json.loads(re.search(r'const N = (\{.*?\});\n',html,re.S).group(1))
   self.assertEqual(data['summary']['reply_by'],'2026. 12. 2.(수)');self.assertEqual(len(data['confirm']),2)
   self.assertEqual(data['reply']['privacy'],[])
+  self.assertIn('white-space: pre-line',html)
+ def test_invalid_inputs_report_korean_without_traceback(self):
+  cases=[{'summary':'날짜'}, {'items':[{'label':'일시'}]}, {'sections':'잘못된 값'}, {'title':'안내\x01문'}, {'reply':{'privacy':{'include':'true'}}}]
+  for change in cases:
+   data=dict(self.data,**change); path=Path(self.tmp.name)/'입력 파일.json';path.write_text(json.dumps(data,ensure_ascii=False))
+   result=subprocess.run([sys.executable,str(R/'scripts/build_newsletter.py'),str(path),'-o',str(self.out)],capture_output=True,text=True)
+   self.assertNotEqual(result.returncode,0);self.assertIn('주세요',result.stderr);self.assertNotIn('Traceback',result.stderr)
+ def test_short_dates_use_current_year_without_doc_date(self):
+  self.data.pop('doc_date',None);today=datetime.date.today();date=datetime.date(today.year,12,9)
+  wrong=b.DOW[(date.weekday()+1)%7];self.data['summary']['when']=f'12. 9.({wrong})'
+  with self.assertRaisesRegex(ValueError,'Weekday'):b.validate(self.data)
+ def test_preview_uses_document_date(self):
+  self.data['doc_date']='2025-04-01';self.data['summary']['when']='[확인 필요]';self.data.pop('reply')
+  page=Path(self.tmp.name)/'미리보기.html';b.preview(self.data,[],page)
+  data=json.loads(re.search(r'const N = (\{.*?\});\n',page.read_text(),re.S).group(1))
+  self.assertEqual(data['issue_date'],'2025년 4월    일')
  def test_example_has_no_personal_data(self):
   text=json.dumps(EXAMPLE,ensure_ascii=False)
   self.assertIsNone(re.search(r'\d{2,3}-\d{3,4}-\d{4}',text));self.assertNotRegex(text,r'\d+명')
+ def test_blank_masthead_values_need_confirmation(self):
+  self.data['masthead']={'phones':['', '  '], 'homepage':'  '}
+  report=b.build(self.data,self.out)
+  self.assertTrue(any('머리말' in c for c in report['needs_confirmation']))
+  self.assertGreaterEqual(body(self.out).count('[확인 필요]'),3)
+ def test_empty_reply_is_a_reply(self):
+  self.data['reply']={}
+  report=b.build(self.data,self.out)
+  self.assertIn('참가 동의함',body(self.out))
+  self.assertTrue(any('개인정보' in c for c in report['needs_confirmation']))
+  page=Path(self.tmp.name)/'preview.html';b.preview(self.data,report['needs_confirmation'],page)
+  data=json.loads(re.search(r'const N = (\{.*?\});\n',page.read_text(),re.S).group(1))
+  self.assertIsInstance(data['reply'],dict)
+  self.data['summary'].pop('reply_by')
+  with self.assertRaisesRegex(ValueError,'reply_by'):b.validate(self.data)
+ def test_colliding_paths_are_rejected_before_writing(self):
+  source=Path(self.tmp.name)/'입력.json';source.write_text(json.dumps(self.data,ensure_ascii=False))
+  for args in ([str(source),'-o',str(source)], [str(source),'-o',str(self.out),'--preview',str(self.out)],
+               [str(source),'-o',str(self.out),'--preview',str(self.out.with_suffix('.txt'))]):
+   before=source.read_bytes()
+   result=subprocess.run([sys.executable,str(R/'scripts/build_newsletter.py'),*args],capture_output=True,text=True)
+   self.assertNotEqual(result.returncode,0);self.assertIn('서로 다른 경로',result.stderr)
+   self.assertNotIn('Traceback',result.stderr);self.assertEqual(source.read_bytes(),before)
+   self.assertFalse(self.out.exists())
+ def test_template_cannot_be_overwritten_by_output(self):
+  template=Path(self.tmp.name)/'양식.hwpx';shutil.copy(b.DEFAULT_TEMPLATE,template)
+  self.data['template']=str(template)
+  source=Path(self.tmp.name)/'입력.json';source.write_text(json.dumps(self.data,ensure_ascii=False))
+  before=template.read_bytes()
+  for args in (['-o',str(template)], ['-o',str(self.out),'--preview',str(template)]):
+   result=subprocess.run([sys.executable,str(R/'scripts/build_newsletter.py'),str(source),*args],capture_output=True,text=True)
+   self.assertNotEqual(result.returncode,0);self.assertIn('서로 다른 경로',result.stderr)
+   self.assertEqual(template.read_bytes(),before);self.assertFalse(self.out.exists())
+ def test_blank_reply_deadline_is_rejected(self):
+  self.data['summary']['reply_by']='  '
+  with self.assertRaisesRegex(ValueError,'reply_by'):b.validate(self.data)
+ def test_long_item_grows_and_long_titles_are_rejected(self):
+  self.data['items'][0]['text']='가'*150
+  b.build(self.data,self.out)
+  with zipfile.ZipFile(self.out) as z:sec=E.fromstring(z.read('Contents/section0.xml'))
+  table=next(t for t in sec.iter('{%s}tbl'%b.NS['hp']) if '구분' in ''.join(t.itertext()))
+  row=table.findall('hp:tr',b.NS)[1]
+  self.assertEqual(int(row.find('hp:tc/hp:cellSz',b.NS).get('height')),2565+3*b.LINE_EXTRA)
+  for change in ({'title':'가'*61}, {'items':[{'label':'가'*21,'text':'내용'}]}, {'reply':{'title':'가'*61}}):
+   with self.assertRaisesRegex(ValueError,'줄여 주세요'):b.validate(dict(self.data,**change))
+ def test_long_pledge_counts_toward_page_warning(self):
+  before=b.page_height(self.data);self.data['reply']['pledge']='가'*1000
+  self.assertGreater(b.page_height(self.data),before)
+  self.assertTrue(any('한 쪽을 넘을 것 같아요' in c for c in b.validate(self.data)))
 if __name__=='__main__':unittest.main()

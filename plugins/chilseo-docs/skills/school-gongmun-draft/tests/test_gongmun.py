@@ -1,4 +1,4 @@
-import copy,json,re,sys,unittest
+import copy,json,re,sys,unittest,subprocess,tempfile
 from pathlib import Path
 R=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(R/'scripts'))
@@ -73,4 +73,70 @@ class GongmunTests(unittest.TestCase):
   text=json.dumps(EXAMPLE,ensure_ascii=False)
   for a in EXAMPLE['approval']+EXAMPLE['cooperation']:self.assertNotIn('name',a)
   self.assertIsNone(re.search(r'\d{2,3}-\d{3,4}-\d{4}',text))
+ def test_unknown_related_date_is_rendered_and_warned(self):
+  self.data['related'][0]['date']='[확인 필요]'
+  self.assertIn('[확인 필요]',g.lines(self.data)[1][1])
+  self.assertEqual(by_id(g.check(self.data))['V2-1']['status'],'warn')
+ def test_short_date_without_year_warns(self):
+  self.data.pop('written');self.data['items']=[{'text':'일시: 11. 5.(금)'}]
+  self.assertEqual(by_id(g.check(self.data))['C4']['status'],'warn')
+ def test_korean_amount_keeps_one_before_large_units(self):
+  self.data['items']=[{'text':'소요예산: 금1,100,000,000원(금십억원)'}]
+  self.assertEqual(by_id(g.check(self.data))['C3']['status'],'fail')
+  self.assertEqual(g.korean_amount(0),'영')
+  self.assertNotEqual(g.normalize_korean('십일억'),g.normalize_korean('십억'))
+ def test_ledger_matched_item_without_amount(self):
+  self.data['items']=[{'text':'실험 재료비: 확인 필요'}]
+  self.assertEqual(by_id(g.check(self.data))['V3-1']['status'],'fail')
+ def test_bad_inputs_report_korean_without_traceback(self):
+  cases=[{'items':[{}]}, {'items':'잘못된 항목'}, {'ledger':[{'name':'항목','allocated':5}]}, {'related':[{'date':'2026-99-99'}]}, {'items':[{'text':'항목'}]*15}, {'school':[]}, {'todo':[1]}]
+  with tempfile.TemporaryDirectory(prefix='기안 문서 ') as temp:
+   path=Path(temp)/'입력 파일.json'
+   for case in cases:
+    data=copy.deepcopy(EXAMPLE);data.update(case);path.write_text(json.dumps(data,ensure_ascii=False))
+    run=subprocess.run([sys.executable,str(R/'scripts/build_gongmun.py'),str(path),'--check'],capture_output=True,text=True)
+    self.assertEqual(run.returncode,2,case);self.assertIn('주세요',run.stderr,case);self.assertNotIn('Traceback',run.stderr)
+ def test_missing_breakdown_amount_is_not_reported_as_zero(self):
+  self.data['items']=[{'text':'소요예산: 금100원(금백원)'},{'text':'산출내역','children':[{'text':'재료비: 확인 필요'}]}]
+  result=by_id(g.check(self.data))['C2']
+  self.assertEqual(result['status'],'fail');self.assertIn('빠진 금액',result['detail'])
+ def test_missing_file_has_no_traceback(self):
+  run=subprocess.run([sys.executable,str(R/'scripts/build_gongmun.py'),'/tmp/없는-기안.json'],capture_output=True,text=True)
+  self.assertEqual(run.returncode,2);self.assertNotIn('Traceback',run.stderr)
+ def test_subtotal_with_missing_child_amount_fails(self):
+  self.data['items']=[{'text':'재료비: 100원','children':[{'text':'재료: 100원'},{'text':'추가: 확인 필요'}]}]
+  result=by_id(g.check(self.data))['C2']
+  self.assertEqual(result['status'],'fail');self.assertIn('빠진 금액',result['detail'])
+ def test_ledger_amounts_stay_exact_in_browser(self):
+  self.data['ledger']=[{'name':'예산','allocated':2**53,'spend':[]}]
+  with self.assertRaisesRegex(ValueError,'ledger.allocated'):g.check(self.data)
+  self.data['ledger']=[{'name':'예산','allocated':2**53-1,'spend':[{'name':'첫째','amount':2**53-1},{'name':'둘째','amount':1}]}]
+  with self.assertRaisesRegex(ValueError,'전체 집행 합계'):g.check(self.data)
+ def test_malformed_amount_reports_what_to_fix(self):
+  self.data['items']=[{'text':'재료: ,,원*2개=2원'}]
+  with tempfile.TemporaryDirectory() as temp:
+   path=Path(temp)/'입력.json';path.write_text(json.dumps(self.data,ensure_ascii=False))
+   run=subprocess.run([sys.executable,str(R/'scripts/build_gongmun.py'),str(path),'--check'],capture_output=True,text=True)
+   self.assertEqual(run.returncode,2);self.assertIn('숫자 또는 쉼표',run.stderr);self.assertNotIn('Traceback',run.stderr)
+ def test_dates_require_documented_format(self):
+  for key in ('written','related'):
+   data=copy.deepcopy(EXAMPLE)
+   if key=='written':data[key]='20261104'
+   else:data[key][0]['date']='20260302'
+   with self.assertRaisesRegex(ValueError,'연도-월-일'):g.check(data)
+ def test_year_zero_is_an_invalid_date(self):
+  self.data['lead']='일시: 0000. 11. 5.(목)'
+  result=by_id(g.check(self.data))['C4']
+  self.assertEqual(result['status'],'fail');self.assertIn('없는 날짜',result['detail'])
+ def test_links_require_web_addresses(self):
+  for url in ('javascript:alert(1)','https://','https://:80','https://example.invalid:99999','https://example.invalid/공백 주소'):
+   self.data['links']=[{'label':'자료','url':url}]
+   with self.assertRaisesRegex(ValueError,'links.url'):g.check(self.data)
+  self.data['links']=[{'label':'자료','url':'https://example.invalid/자료'}]
+  g.check(self.data)
+ def test_short_date_at_start_is_not_a_duplicate_number(self):
+  self.data['items']=[{'text':'11. 27.(금) 행사'}]
+  self.assertEqual(by_id(g.check(self.data))['V1']['status'],'ok')
+  self.data['items']=[{'text':'11. 행사'}]
+  self.assertEqual(by_id(g.check(self.data))['V1']['status'],'fail')
 if __name__=='__main__':unittest.main()

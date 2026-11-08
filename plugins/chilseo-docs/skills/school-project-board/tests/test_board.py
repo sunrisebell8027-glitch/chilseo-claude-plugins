@@ -17,6 +17,36 @@ def status(results, id_):
 
 
 class BoardTest(unittest.TestCase):
+    def test_ledger_without_purchase_amount_fails(self):
+        data = {'school': '한빛초등학교', 'project': '사업', 'updated': '2026-03-02',
+                'docs': [{'id': 'buy', 'kind': '품의', 'title': '재료', 'status': 'todo', 'need': 'buy'}],
+                'ledger': [{'name': '재료', 'allocated': 100, 'spend': [{'doc': 'buy', 'name': '재료', 'amount': 50}]}]}
+        row = next(r for r in bb.check(data) if r['id'] == '합계')
+        self.assertEqual(row['status'], 'fail')
+        self.assertIn('amounts', row['detail'])
+
+    def test_dates_require_documented_format(self):
+        data = {'school': '한빛초등학교', 'project': '사업', 'updated': '20260302'}
+        with self.assertRaisesRegex(ValueError, 'YYYY-MM-DD'): bb.check(data)
+        data['updated'] = '2026-03-02'
+        data['schedule'] = [{'date': '20260303', 'title': '준비'}]
+        with self.assertRaisesRegex(ValueError, 'YYYY-MM-DD'): bb.check(data)
+
+    def test_title_escapes_html(self):
+        data = {'school': '한빛초등학교', 'project': '<b>사업 & 준비</b>', 'updated': '2026-03-02'}
+        html = bb.render(data, bb.check(data))
+        self.assertIn('<title>&lt;b&gt;사업 &amp; 준비&lt;/b&gt; 보드</title>', html)
+
+    def test_cli_reports_unwritable_output_without_traceback(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'board.json'
+            path.write_text(json.dumps({'school': '한빛초등학교', 'project': '사업', 'updated': '2026-03-02'}), encoding='utf-8')
+            run = subprocess.run([sys.executable, str(SKILL / 'scripts' / 'build_board.py'), str(path), '-o', tmp], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 2)
+        self.assertIn('저장 경로', run.stderr)
+        self.assertNotIn('Traceback', run.stderr)
+
     def test_gongmun_copy_matches_gongmun_skill(self):
         mine = (SKILL / 'scripts' / 'build_gongmun.py').read_bytes()
         theirs = SKILL.parent / 'school-gongmun-draft' / 'scripts' / 'build_gongmun.py'
@@ -62,6 +92,7 @@ class BoardTest(unittest.TestCase):
         self.assertEqual(status(results, '길잡이'), 'warn')
         self.assertEqual(bb.page_data(UNANSWERED, results)['docs'], [])
         self.assertTrue(bb.say_steps(UNANSWERED)[0].startswith('지금 할 일:'))
+        self.assertIn('남은 질문', bb.say_steps(UNANSWERED)[1])
 
     def test_board_without_guide_builds_and_explains_how_to_get_steps(self):
         data = {'school': '한빛초등학교', 'project': '2026. 시작 보드', 'updated': '2026-03-02'}

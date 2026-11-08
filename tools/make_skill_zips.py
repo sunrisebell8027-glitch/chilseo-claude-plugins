@@ -4,8 +4,12 @@ import sys, zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_DIRS = {'__pycache__', '.venv', 'tests', 'evals'}
-SKIP_FILES = {'.DS_Store'}
+SKIP_DIRS = {
+    '__pycache__', '.venv', 'venv', 'tests', 'evals', 'dist', 'build',
+    '.pytest_cache', '.mypy_cache', '.ruff_cache', 'node_modules',
+}
+SKIP_FILES = {'.DS_Store', '.env', '.env.local', '.env.development', '.env.production'}
+PRIVATE_NAMES = {'.npmrc', '.pypirc', 'credentials', 'credentials.json', 'secrets.json'}
 
 
 def pack(skill, dist):
@@ -13,7 +17,10 @@ def pack(skill, dist):
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:
         for path in sorted(skill.rglob('*')):
             rel = path.relative_to(skill)
-            if path.is_dir() or path.name in SKIP_FILES or SKIP_DIRS & set(rel.parts) or path.suffix == '.pyc':
+            if (path.is_dir() or path.is_symlink() or path.name in SKIP_FILES
+                    or path.name.lower() in PRIVATE_NAMES
+                    or path.name.lower().startswith('.env.')
+                    or SKIP_DIRS & set(rel.parts) or path.suffix == '.pyc'):
                 continue
             z.write(path, Path(skill.name) / rel)
     return target

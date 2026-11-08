@@ -3,7 +3,7 @@ from pathlib import Path
 from lxml import etree as E
 R=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(R/'scripts'))
-import build,gate
+import build,gate,fix_namespaces
 EXAMPLE=R/'examples/sample_reading_week.json'
 class BuildTests(unittest.TestCase):
  def setUp(self):self.data=json.loads(EXAMPLE.read_text())
@@ -15,6 +15,10 @@ class BuildTests(unittest.TestCase):
   with self.assertRaisesRegex(ValueError,'calculation'):build.validate(self.data)
  def test_budget_stale_display_rejected(self):
   self.data['pages'][1][1]['rows'][2][2]='100,000'
+  with self.assertRaisesRegex(ValueError,'displayed'):build.validate(self.data)
+ def test_budget_amount_is_not_matched_inside_larger_number(self):
+  self.data['pages'][1][1]['rows'][2][2]='1,120,000'
+  self.data['pages'][1][1]['rows'][3][2]='1,420,000'
   with self.assertRaisesRegex(ValueError,'displayed'):build.validate(self.data)
  def test_older_budget_form_accepted(self):
   self.data['budget']={'unit_price':2000,'headcount':60,'total':120000}
@@ -103,4 +107,51 @@ class BuildTests(unittest.TestCase):
  def test_output_budget_mismatch_blocked(self):
   tab={'rows':3,'cols':2,'cells':[{'row':0,'col':0,'text':'내용'},{'row':0,'col':1,'text':'금액'}, {'row':1,'col':0,'text':'체험비'},{'row':1,'col':1,'text':'530,000'}, {'row':2,'col':0,'text':'합계'},{'row':2,'col':1,'text':'500,000'}]}
   self.assertFalse(gate.check_budget([tab]).ok)
+ def test_empty_table_rejected_before_budget_check(self):
+  self.data['pages'][0][11]['rows']=[]
+  with self.assertRaisesRegex(ValueError,'rows'):build.validate(self.data)
+ def test_invalid_block_rejected(self):
+  self.data['pages'][0][0]={}
+  with self.assertRaisesRegex(ValueError,'kind'):build.validate(self.data)
+ def test_attendance_column_mismatch_blocks(self):
+  tab={'rows':2,'cols':4,'cells':[{'row':0,'col':0,'text':'출석'},{'row':1,'col':1,'text':'성명'}]}
+  result=gate.check_attend([tab]);self.assertFalse(result.ok);self.assertTrue(result.blocking)
+ def test_bad_package_is_reported_as_blocked(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   findings,blocked=gate.run(Path(tmp)/'없음.hwpx')
+   self.assertEqual(findings,blocked);self.assertEqual(blocked[0].check,'open')
+ def test_mimetype_package_rules(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   original=Path(tmp)/'원본.hwpx';build.build(self.data,original)
+   self.assertTrue(gate.check_open(original).ok)
+   with zipfile.ZipFile(original) as z:
+    entries=[(info,z.read(info)) for info in z.infolist()]
+   cases={'순서':entries[1:2]+entries[:1]+entries[2:],
+          '압축':[(entries[0][0],entries[0][1])]+entries[1:],
+          '내용':[(entries[0][0],b'application/hwp+zip\n')]+entries[1:]}
+   for name,items in cases.items():
+    with self.subTest(name=name):
+     path=Path(tmp)/(name+'.hwpx')
+     with zipfile.ZipFile(path,'w') as z:
+      for info,data in items:
+       info=copy.copy(info)
+       if name=='압축' and info.filename=='mimetype':info.compress_type=zipfile.ZIP_DEFLATED
+       z.writestr(info,data)
+     result=gate.check_open(path)
+     self.assertFalse(result.ok);self.assertTrue(result.blocking)
+     self.assertIn('mimetype',result.detail)
+ def test_namespace_fix_preserves_namespaced_attributes(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   path=str(Path(tmp)/'문서.hwpx')
+   with zipfile.ZipFile(path,'w') as z:z.writestr('Contents/section0.xml',b'<ns0:p xmlns:ns0="http://www.hancom.co.kr/hwpml/2011/paragraph" ns0:id="1"/>')
+   fix_namespaces.fix_hwpx_namespaces(path)
+   with zipfile.ZipFile(path) as z:root=E.fromstring(z.read('Contents/section0.xml'))
+   self.assertEqual(root.get('{http://www.hancom.co.kr/hwpml/2011/paragraph}id'),'1')
+ def test_page_starting_with_table_breaks_page(self):
+  self.data['pages'][1].insert(0,self.data['pages'][1].pop(1))
+  with tempfile.TemporaryDirectory() as tmp:
+   out=Path(tmp)/'계획.hwpx';build.build(self.data,out)
+   with zipfile.ZipFile(out) as z:root=E.fromstring(z.read('Contents/section0.xml'))
+   table=next(p for p in root.findall('hp:p',build.NS) if '산출 내역' in ''.join(p.itertext()))
+   self.assertEqual(table.get('pageBreak'),'1')
 if __name__=='__main__':unittest.main()

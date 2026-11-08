@@ -40,8 +40,24 @@ def formula_product(formula):
     return product
 
 def validate(data, masthead_text=None):
+    if not isinstance(data,dict): raise ValueError('입력 JSON은 객체로 작성해 주세요')
     for key in ('title','pages'):
         if not data.get(key): raise ValueError(f'Missing required field: {key}')
+    if not isinstance(data['title'],str): raise ValueError('title은 글자로 입력해 주세요')
+    if not isinstance(data['pages'],list) or any(not isinstance(p,list) or not p for p in data['pages']):
+        raise ValueError('pages에는 비어 있지 않은 쪽 목록을 입력해 주세요')
+    for page in data['pages']:
+        for block in page:
+            if not isinstance(block,dict) or block.get('kind') not in ('heading','subheading','text','note','table'):
+                raise ValueError('각 블록의 kind를 확인해 주세요')
+            if block['kind']=='table':
+                rows=block.get('rows'); widths=block.get('widths'); align=block.get('align')
+                if not isinstance(rows,list) or not rows or not isinstance(widths,list) or not widths or any(type(w) not in (int,float) or not math.isfinite(w) or w<=0 for w in widths):
+                    raise ValueError('표의 rows와 양수 widths를 확인해 주세요')
+                if any(not isinstance(row,list) or len(row)!=len(widths) for row in rows): raise ValueError('Nonrectangular table: 표의 칸 수를 맞춰 주세요')
+                if align is not None and (not isinstance(align,list) or len(align)!=len(widths) or any(a not in ALIGN for a in align)):
+                    raise ValueError('Invalid table column alignment: 표의 align을 확인해 주세요')
+            elif not isinstance(block.get('text'),str): raise ValueError('각 글 블록에 text를 입력해 주세요')
     if data.get('school') and masthead_text is not None and data['school'] not in masthead_text:
         raise ValueError('School name not found in the template masthead')
     if data.get('event_date'):datetime.date.fromisoformat(data['event_date'])
@@ -57,7 +73,7 @@ def validate(data, masthead_text=None):
         if not budget_tables: raise ValueError('A budget table is required')
         cells=[str(c) for table in budget_tables for row in table['rows'][1:] for c in row]
         for amount in [total]+[i['amount'] for i in items]:
-            if not any(f'{amount:,}' in c for c in cells): raise ValueError('Budget metadata and displayed amount differ')
+            if not any(re.search(r'(?<![\d,])'+re.escape(f'{amount:,}')+r'(?![\d,])',c) for c in cells): raise ValueError('Budget metadata and displayed amount differ')
         for item in items:
             if item.get('formula') and not any(item['formula'] in c for c in cells):
                 raise ValueError('Budget metadata and displayed formula differ')
@@ -190,7 +206,10 @@ def build(data, target, base=None):
         return p
     for pi,page in enumerate(data['pages']):
         for bi,block in enumerate(page):
-            if block['kind']=='table':sec.append(table(block))
+            if block['kind']=='table':
+                p=table(block)
+                if pi>0 and bi==0:p.set('pageBreak','1')
+                sec.append(p)
             else:sec.append(ptext(block['text'],block['kind'],pagebreak=pi>0 and bi==0))
     # Remove stale line-layout caches and any extra section, including manifest entries.
     for el in sec.findall('.//hp:linesegarray',NS):el.getparent().remove(el)
@@ -228,7 +247,7 @@ def main():
     try:
         report=build(json.loads(args.input.read_text()),args.output,base=args.input.parent)
         print(json.dumps({'file':report['file'],'package_checks':'passed','visual_review':'pending'},ensure_ascii=False))
-    except (ValueError,KeyError,FileNotFoundError) as e:
-        print(f'Build failed: {e}',file=sys.stderr);return 1
+    except (ValueError,KeyError,TypeError,IndexError,OSError,zipfile.BadZipFile) as e:
+        print(f'만들지 못했어요. 입력 파일과 항목을 확인해 주세요: {e}',file=sys.stderr);return 1
     return 0
 if __name__=='__main__':raise SystemExit(main())

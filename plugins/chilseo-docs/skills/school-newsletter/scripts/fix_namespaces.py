@@ -52,9 +52,12 @@ def fix_hwpx_namespaces(hwpx_path):
                             ns_aliases[alias] = NS_MAP[uri]
 
                     for old_prefix, new_prefix in ns_aliases.items():
+                        if re.search(rf'xmlns:{new_prefix}\s*=', text):
+                            continue
                         text = text.replace(f"xmlns:{old_prefix}=", f"xmlns:{new_prefix}=")
                         text = text.replace(f"<{old_prefix}:", f"<{new_prefix}:")
                         text = text.replace(f"</{old_prefix}:", f"</{new_prefix}:")
+                        text = re.sub(rf'(\s){old_prefix}:', rf'\1{new_prefix}:', text)
 
                     data = text.encode("utf-8")
 
