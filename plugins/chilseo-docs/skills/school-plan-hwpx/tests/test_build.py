@@ -1,4 +1,4 @@
-import copy,json,subprocess,sys,tempfile,unittest,zipfile
+import copy,json,re,subprocess,sys,tempfile,unittest,zipfile
 from pathlib import Path
 from lxml import etree as E
 R=Path(__file__).resolve().parents[1]
@@ -95,11 +95,29 @@ class BuildTests(unittest.TestCase):
     for t in root.findall('.//hp:tbl',build.NS):
      self.assertEqual(len(t.findall('hp:tr',build.NS)),int(t.get('rowCnt')))
  def test_cell_border_by_position(self):
-  head=build.cell_border(0,1,4);first=build.cell_border(1,0,4);mid=build.cell_border(2,1,4);last=build.cell_border(3,3,4)
-  self.assertEqual(head,(('SOLID','0.15 mm'),('SOLID','0.15 mm'),('SOLID','0.1 mm'),('DOUBLE_SLIM','0.5 mm'),'#DFE6F7'))
-  self.assertEqual(first[:4],(('SOLID','0.15 mm'),('SOLID','0.12 mm'),('DOUBLE_SLIM','0.5 mm'),('SOLID','0.12 mm')))
+  head=build.cell_border(0,1,4,4);headfirst=build.cell_border(0,0,4,4);first=build.cell_border(1,0,4,4);mid=build.cell_border(2,1,4,4);last=build.cell_border(3,3,4,4)
+  self.assertEqual(head,(('SOLID','0.15 mm'),('SOLID','0.15 mm'),('SOLID','0.4 mm'),('DOUBLE_SLIM','0.5 mm'),'#DFE6F7'))
+  self.assertEqual(headfirst[0],('SOLID','0.4 mm'))
+  self.assertEqual(first[:4],(('SOLID','0.4 mm'),('SOLID','0.12 mm'),('DOUBLE_SLIM','0.5 mm'),('SOLID','0.12 mm')))
   self.assertEqual(mid[:4],(('SOLID','0.12 mm'),)*4);self.assertIsNone(mid[4])
-  self.assertEqual(last[:3],(('SOLID','0.12 mm'),('SOLID','0.15 mm'),('SOLID','0.12 mm')))
+  self.assertEqual(last[:4],(('SOLID','0.12 mm'),('SOLID','0.4 mm'),('SOLID','0.12 mm'),('SOLID','0.4 mm')))
+ def test_blank_line_before_heading_and_hanging_indent(self):
+  data=copy.deepcopy(self.data)
+  with tempfile.TemporaryDirectory() as tmp:
+   out=Path(tmp)/'빈줄.hwpx';build.build(data,out)
+   with zipfile.ZipFile(out) as z:head=E.fromstring(z.read('Contents/header.xml'));root=E.fromstring(z.read('Contents/section0.xml'))
+  ns=dict(build.NS,hc='http://www.hancom.co.kr/hwpml/2011/core')
+  intent={p.get('id'):p.find('.//hh:margin/hc:intent',ns).get('value') for p in head.find('.//hh:paraProperties',ns)}
+  body=[p for p in root.findall('hp:p',ns)][3:]
+  text=lambda p:''.join(p.xpath('./hp:run/hp:t//text()',namespaces=ns))
+  heads=[i for i,b in enumerate(body) if re.match(r'^\d+\. ',text(b))]
+  self.assertGreater(len(heads),1)
+  for i in heads[1:]:
+   if body[i].get('pageBreak')=='1':continue
+   self.assertEqual(text(body[i-1]),'',text(body[i]))
+  marks=[p for p in body if re.match(r'^[가-하]\. ',text(p))]
+  self.assertTrue(marks)
+  for p in marks:self.assertEqual(intent[p.get('paraPrIDRef')],build.HANG_INDENT)
  def test_table_style_in_output(self):
   with tempfile.TemporaryDirectory() as tmp:
    out=Path(tmp)/'표양식.hwpx';self.assertFalse(build.build(self.data,out)['blocked'])
@@ -119,9 +137,13 @@ class BuildTests(unittest.TestCase):
    for ri,row in enumerate(rows[1:],1):
     for ci,tc in enumerate(row):
      self.assertEqual(side(tc,'topBorder')[:2],('DOUBLE_SLIM','0.5 mm') if ri==1 else ('SOLID','0.12 mm'))
-     self.assertEqual(side(tc,'leftBorder')[1],'0.15 mm' if ci==0 else '0.12 mm')
-     self.assertEqual(side(tc,'rightBorder')[1],'0.15 mm' if ci==n-1 else '0.12 mm')
+     self.assertEqual(side(tc,'leftBorder')[1],'0.4 mm' if ci==0 else '0.12 mm')
+     self.assertEqual(side(tc,'rightBorder')[1],'0.4 mm' if ci==n-1 else '0.12 mm')
+     if ri==len(rows)-1:self.assertEqual(side(tc,'bottomBorder')[1],'0.4 mm')
      self.assertIsNone(fills[tc.get('borderFillIDRef')].find('.//hc:winBrush',ns))
+  for t in tables:
+   self.assertEqual(dict(t.find('hp:inMargin',ns).attrib),{k:build.CELL_MARGIN for k in ('left','right','top','bottom')})
+   for tc in t.findall('.//hp:tc',ns):self.assertEqual(tc.find('hp:cellMargin',ns).get('left'),build.CELL_MARGIN)
   schedule=next(t for t in tables if t.find('.//hp:t',ns).text=='시간')
   body=schedule.findall('hp:tr',ns)[1].findall('hp:tc',ns)
   self.assertEqual([aligns[tc.find('.//hp:p',ns).get('paraPrIDRef')] for tc in body],['CENTER','CENTER','JUSTIFY','JUSTIFY'])

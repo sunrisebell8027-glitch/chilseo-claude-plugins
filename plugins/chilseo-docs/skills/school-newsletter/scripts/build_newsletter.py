@@ -185,6 +185,12 @@ def validate_types(data):
     if len(r.get('title', '')) > 60: raise ValueError('reply.title을 60자 이내로 줄여 주세요.')
     for k in ('consents', 'fields'):
         if k in r: texts(r[k], 'reply.' + k)
+    if 'choices' in r:
+        texts(r['choices'], 'reply.choices')
+        if len(r['choices']) != 2 or not all(c.strip() for c in r['choices']):
+            raise ValueError('reply.choices에는 표시 칸 두 개(예: ["참여함", "참여하지 않음"])를 입력해 주세요.')
+    if 'after_event' in r and type(r['after_event']) is not bool:
+        raise ValueError('reply.after_event는 true 또는 false로 입력해 주세요.')
     if 'privacy' in r:
         obj(r['privacy'], 'reply.privacy'); privacy = r['privacy']
         if privacy.get('include') is not None and type(privacy['include']) is not bool:
@@ -214,7 +220,11 @@ def validate(data, masthead=None):
         if not due or not due.strip(): raise ValueError('summary.reply_by에 회신 기한을 입력해 주세요.')
         first_event = first_date(data['summary']['when'], year)
         due_date = first_date(due, first_event.year if first_event else year)
-        if first_event and due_date and due_date >= first_event:
+        if reply.get('after_event'):
+            # 참여 확인서처럼 행사(설문 기간)가 시작된 뒤에 내는 회신서
+            if first_event and due_date and due_date < first_event:
+                raise ValueError('deadline: 참여 확인서의 회신 기한을 기간이 시작한 날 뒤로 고쳐 주세요.')
+        elif first_event and due_date and due_date >= first_event:
             raise ValueError('deadline: 회신 기한을 행사보다 앞선 날짜로 고쳐 주세요.')
         if not first_event or not due_date:
             confirm.append('행사 날짜와 회신 기한을 비교할 수 없어요. 날짜와 순서를 확인해 주세요.')
@@ -332,6 +342,9 @@ def build(data, target, base=None):
     reply = data.get('reply')
     if reply is not None:
         fill('{{REPLY_TITLE}}', reply.get('title') or f'『{data["title"]}』 참가 동의서')
+        if reply.get('choices'):
+            for t, label in zip([holder('참가 동의함'), holder('참가 동의하지 않음')], reply['choices']):
+                t.text = label
         note_style = para_of(holder('{{REPLY_NOTE}}')).get('paraPrIDRef')
         pledge = repeat('{{PLEDGE}}', [reply.get('pledge') or '상기 내용을 확인하고 동의서를 제출합니다.']
                         + consent_lines(reply) + privacy_lines(reply))
@@ -372,7 +385,7 @@ def preview(data, confirm, target):
     page = {k: data.get(k) for k in ('school', 'title', 'greeting', 'items', 'notes', 'sections', 'summary', 'issue_date', 'example')}
     reply = data.get('reply')
     page['reply'] = {'title': reply.get('title') or f'『{data["title"]}』 참가 동의서', 'pledge': reply.get('pledge'), 'note': reply.get('note'),
-                     'privacy': consent_lines(reply) + privacy_lines(reply), 'privacy_include': (reply.get('privacy') or {}).get('include')} if reply is not None else None
+                     'privacy': consent_lines(reply) + privacy_lines(reply), 'privacy_include': (reply.get('privacy') or {}).get('include'), 'choices': reply.get('choices') or ['참가 동의함', '동의하지 않음']} if reply is not None else None
     if not page['issue_date']:
         day = datetime.date.fromisoformat(data['doc_date']) if data.get('doc_date') else datetime.date.today()
         page['issue_date'] = f'{day.year}년 {day.month}월    일'

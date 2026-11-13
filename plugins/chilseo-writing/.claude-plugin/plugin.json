@@ -1,7 +1,7 @@
 {
   "name": "chilseo-writing",
-  "version": "0.1.0",
-  "description": "웹 앱·수업 도구를 만들 때 쓰는 디자인·문구 스킬 4종(toss-writing, toss-design, krds-design, web-assets). 토스·KRDS의 공개 원칙을 참고한 비공식 가이드이며 토스 브랜드 자산은 담지 않는다.",
+  "version": "0.2.0",
+  "description": "웹 앱과 글을 만들 때 쓰는 디자인·문구·글쓰기 스킬 5종(toss-writing, toss-design, krds-design, web-assets, dori-voice). 토스·KRDS의 공개 원칙을 참고한 비공식 가이드이며 토스 브랜드 자산은 담지 않는다. dori-voice는 사례 보고서·원고·연수 대본을 비유 없이 사실로, 글쓴이 말투로 쓰고 고친다.",
   "author": {
     "name": "Jongwook Yoo (칠서초등학교)"
   },
@@ -11,6 +11,8 @@
     "UX 라이팅",
     "KRDS",
     "웹 접근성",
-    "수업 도구"
+    "수업 도구",
+    "글쓰기",
+    "원고 윤문"
   ]
 }

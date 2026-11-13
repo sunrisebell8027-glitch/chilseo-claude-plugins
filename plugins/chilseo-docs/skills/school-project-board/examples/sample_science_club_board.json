@@ -29,7 +29,13 @@
     },
     {
       "text": "결과 보고를 언제 올릴지 정해 주세요. 지금은 12. 18.(금)로 잡아 두었어요.",
-      "doc": "report"
+      "doc": "report",
+      "links": [
+        {
+          "label": "결과 보고 안내(예시 주소)",
+          "url": "https://example.com/notice"
+        }
+      ]
     }
   ],
   "docs": [

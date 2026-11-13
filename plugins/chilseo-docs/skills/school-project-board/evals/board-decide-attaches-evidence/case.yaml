@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: board-decide-attaches-evidence
+expected_outcome: |
+  정할 것 3번(결과 보고를 언제 올릴지)에 선생님이 준 주소를 links로 붙이고 다시 만든다. 캡처는 받은 파일이 없으므로 지어내지 않고, 어느 파일을 보고 정하면 되는지 묻거나 링크만 붙였다고 알린다. 지금 할 일과 다음 할 일을 전한다.

@@ -316,6 +316,67 @@ global.navigator = { clipboard: { writeText() { return Promise.resolve(); } } };
             self.assertEqual(out['needed'], st.count('need'))
             self.assertEqual(out['ask'], st.count('ask'))
 
+    def test_decide_links_and_images_have_korean_errors(self):
+        base = {'school': '한빛초등학교', 'project': '사업', 'updated': '2026-03-02'}
+        for bad in ([{'label': '공문', 'url': 'http://example.com'}], [{'label': '', 'url': 'https://example.com'}], ['주소']):
+            with self.assertRaisesRegex(ValueError, 'links.*https'):
+                bb.check({**base, 'decide': [{'text': '정해 주세요', 'links': bad}]})
+        for bad in ([{'src': '캡처.gif', 'alt': '공문'}], [{'src': '캡처.png'}], ['캡처.png']):
+            with self.assertRaisesRegex(ValueError, 'images.*png'):
+                bb.check({**base, 'decide': [{'text': '정해 주세요', 'images': bad}]})
+        ok = {**base, 'decide': [{'text': '정해 주세요', 'links': [{'label': '공문', 'url': 'https://example.com/a'}],
+                                  'images': [{'src': '캡처/공문.PNG', 'alt': '공문 2쪽'}]}]}
+        bb.check(ok)
+
+    def test_decide_capture_is_embedded_from_the_json_folder(self):
+        import base64, tempfile
+        png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=')
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp); (tmp / '캡처').mkdir(); (tmp / '캡처' / '공문.png').write_bytes(png)
+            data = {'school': '한빛초등학교', 'project': '사업', 'updated': '2026-03-02',
+                    'decide': [{'text': '정해 주세요', 'images': [{'src': '캡처/공문.png', 'alt': '공문 2쪽'}]}]}
+            (tmp / '보드.json').write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+            out = tmp / '보드.html'
+            r = subprocess.run([sys.executable, str(SKILL / 'scripts' / 'build_board.py'), str(tmp / '보드.json'), '-o', str(out)],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            html = out.read_text(encoding='utf-8')
+            self.assertIn('data:image/png;base64,iVBORw0KGgo', html)
+            self.assertNotIn('캡처/공문.png', html)  # 파일 경로는 보드에 남기지 않는다
+            data['decide'][0]['images'][0]['src'] = '캡처/없음.png'
+            (tmp / '보드.json').write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+            r = subprocess.run([sys.executable, str(SKILL / 'scripts' / 'build_board.py'), str(tmp / '보드.json'), '-o', str(out)],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn('캡처 파일을 찾지 못했어요', r.stderr)
+            self.assertNotIn('Traceback', r.stderr)
+
+    def test_capture_over_the_size_limit_is_rejected(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp); (tmp / '큰.png').write_bytes(b'0' * (bb.IMAGE_LIMIT + 1))
+            data = {'decide': [{'text': '정해 주세요', 'images': [{'src': '큰.png', 'alt': '공문'}]}]}
+            with self.assertRaisesRegex(ValueError, '1.5MB'): bb.embed_images(data, tmp)
+
+    def test_board_without_budget_hides_money_tiles(self):
+        data = {'school': '한빛초등학교', 'project': '설문', 'updated': '2026-03-02', 'guide': {'budget': 'no'}}
+        checks = bb.check(data)
+        row = next(r for r in checks if r['id'] == '편성액')
+        self.assertEqual(row['status'], 'ok')
+        self.assertIn('예산을 쓰지 않는', row['detail'])
+        self.assertTrue(bb.page_data(data, checks)['no_budget'])
+        self.assertFalse(bb.page_data(copy.deepcopy(SAMPLE), bb.check(copy.deepcopy(SAMPLE)))['no_budget'])
+        html = (SKILL / 'assets' / 'board.html').read_text(encoding='utf-8')
+        self.assertIn("if (B.no_budget)", html)
+        self.assertIn('.bento.nobudget', html)
+
+    def test_sample_decide_link_reaches_the_page_data(self):
+        data = copy.deepcopy(SAMPLE)
+        page = bb.page_data(data, bb.check(data))
+        links = [l for d in page['decide'] for l in d.get('links', [])]
+        self.assertEqual(links[0]['url'], 'https://example.com/notice')
+        self.assertTrue(all(d['images'] == [] for d in page['decide']))
+
     def test_guide_rejects_unknown_answer(self):
         data = copy.deepcopy(SAMPLE)
         data['guide']['outside'] = 'maybe'

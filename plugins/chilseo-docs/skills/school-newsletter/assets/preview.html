@@ -121,7 +121,7 @@ mark.confirm { background: var(--warn-bg); color: var(--warn); font-weight: 700;
   <section class="reply" id="reply" hidden aria-labelledby="replyHead">
     <h2 id="replyHead">회신서</h2>
     <p id="replyTitle"></p>
-    <p>종이 동의서에 학년·반·이름을 적고, 참가 동의함이나 동의하지 않음에 표시한 뒤 학생과 보호자가 서명해서 담임 선생님에게 내 주세요.</p>
+    <p id="replyHow">종이 동의서에 학년·반·이름을 적고, 참가 동의함이나 동의하지 않음에 표시한 뒤 학생과 보호자가 서명해서 담임 선생님에게 내 주세요.</p>
     <p class="pledge" id="pledge"></p>
     <div id="privacy"></div>
   </section>
@@ -177,6 +177,7 @@ N.items.forEach(i => {
 if (N.reply) {
   $('reply').hidden = false;
   put($('replyTitle'), N.reply.title);
+  if (N.reply.choices) put($('replyHow'), '종이 회신서에 학년·반·이름을 적고, \'' + N.reply.choices[0] + '\' 또는 \'' + N.reply.choices[1] + '\' 칸에 표시한 뒤 학생과 보호자가 서명해서 담임 선생님에게 내 주세요.');
   put($('pledge'), N.reply.pledge || '상기 내용을 확인하고 동의서를 제출합니다.');
   if (N.reply.privacy.length) N.reply.privacy.forEach(l => $('privacy').appendChild(make('p', l.trim(), 'note')));
   if (N.reply.note) $('privacy').appendChild(make('p', N.reply.note.trim().startsWith('※') ? N.reply.note.trim() : '※ ' + N.reply.note.trim(), 'note'));

@@ -134,6 +134,10 @@ a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outli
   .bento { grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-areas: "guide guide guide" "decide decide money" "docs docs docs" "budget schedule checks" "log log log"; }
 }
+/* 예산을 쓰지 않는 사업: 남은 돈·예산 장부 칸 없이 짠다 */
+.bento.nobudget { grid-template-areas: "guide" "decide" "docs" "schedule" "checks" "log"; }
+@media (min-width: 640px) { .bento.nobudget { grid-template-areas: "guide guide" "decide decide" "docs docs" "schedule checks" "log log"; } }
+@media (min-width: 960px) { .bento.nobudget { grid-template-areas: "guide guide guide" "decide decide decide" "docs docs docs" "schedule schedule checks" "log log log"; } }
 #guide { grid-area: guide; } #decide { grid-area: decide; } #docs { grid-area: docs; } #money { grid-area: money; } #budget { grid-area: budget; }
 #schedule { grid-area: schedule; } #checks { grid-area: checks; } #log { grid-area: log; }
 .tile { position: relative; overflow: hidden; border-radius: var(--radius-tile); padding: var(--pad); min-width: 0;
@@ -203,6 +207,35 @@ a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outli
 .task .for span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task .for svg { width: 12px; height: 12px; flex: none; }
 .task.empty { grid-template-columns: minmax(0, 1fr); font-weight: 600; }
+/* 정할 것의 근거: 공문 캡처(누르면 크게 뜬다)와 원문 링크 */
+.task .shots { display: grid; gap: 8px; margin-top: 12px; }
+.task .shot { all: unset; box-sizing: border-box; cursor: zoom-in; display: block; position: relative; width: 100%; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--line); background: #fff; }
+.task .shot img { display: block; width: 100%; height: 120px; object-fit: cover; object-position: top left; }
+.task .shot span { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 10px; font-size: .75rem; font-weight: 600; color: var(--ink);
+  background: var(--raised); border-top: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task .shot:hover span { text-decoration: underline; text-underline-offset: 3px; }
+.task .shot:active { transform: scale(.98); }
+.task .shot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.task .srcs { display: flex; flex-wrap: wrap; gap: 0 12px; margin: 8px -8px -12px; }
+.task .srcs a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; border-radius: 8px; font-size: .8125rem; font-weight: 600;
+  color: var(--accent); text-decoration: none; }
+.task .srcs a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.task .srcs a:focus-visible { outline: 3px solid var(--accent); outline-offset: -2px; }
+.task:has(.shots) { grid-column: span 2; }
+@media (max-width: 639px) { .task:has(.shots) { grid-column: auto; } }
+dialog.viewer { border: 0; padding: 0; border-radius: var(--radius-panel); background: var(--raised); color: var(--ink);
+  width: min(960px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); box-shadow: 0 24px 64px rgba(0, 0, 0, .28); }
+dialog.viewer::backdrop { background: rgba(0, 0, 0, .5); }
+dialog.viewer .bar { position: sticky; top: 0; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 16px; background: var(--raised);
+  border-bottom: 1px solid var(--line); }
+dialog.viewer .bar b { flex: 1; min-width: 0; font-size: .9375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+dialog.viewer .bar button { all: unset; box-sizing: border-box; cursor: pointer; min-height: 44px; padding: 0 16px; border-radius: 8px; font-size: .875rem;
+  font-weight: 600; color: var(--accent); }
+dialog.viewer .bar button:hover { background: var(--accent-soft); }
+dialog.viewer .bar button:focus-visible { outline: 3px solid var(--accent); outline-offset: -2px; }
+dialog.viewer .scroll { overflow: auto; background: #fff; }
+dialog.viewer img { display: block; width: 100%; min-width: 560px; height: auto; }
 
 /* 문서 흐름: 색 바탕 위의 창. 왼쪽은 문서 목록, 오른쪽은 고른 문서의 기안문 종이가 창 위쪽 가장자리에 걸친다.
    좁은 화면에서는 처음에 종이를 닫아 두고, 문서를 누르면 그 문서 바로 아래에 열린다 */
@@ -474,6 +507,10 @@ details summary:hover { color: var(--accent); }
       <div class="panel" style="--i:6" id="logBox"></div>
     </section>
   </main>
+  <dialog class="viewer" id="viewer" aria-labelledby="viewerName">
+    <div class="bar"><b id="viewerName"></b><button type="button" id="viewerShut">닫기</button></div>
+    <div class="scroll"><img id="viewerImg" alt=""></div>
+  </dialog>
 </div>
 <textarea class="clip" id="clip" aria-hidden="true" tabindex="-1"></textarea>
 
@@ -535,8 +572,26 @@ B.decide.forEach((x, i) => {
     f.addEventListener('click', () => openDoc(x.doc));
     box.appendChild(f);
   }
+  if (x.images && x.images.length) {
+    const shots = make('div', null, 'shots');
+    x.images.forEach(m => {
+      const b = make('button', null, 'shot'); b.type = 'button'; b.setAttribute('aria-label', m.alt + ' 크게 보기');
+      const im = document.createElement('img'); im.src = m.data; im.alt = ''; b.appendChild(im); b.appendChild(make('span', m.alt));
+      b.addEventListener('click', () => { $('viewerImg').src = m.data; $('viewerImg').alt = m.alt; $('viewerName').textContent = m.alt; $('viewer').showModal(); });
+      shots.appendChild(b);
+    });
+    box.appendChild(shots);
+  }
+  if (x.links && x.links.length) {
+    const srcs = make('div', null, 'srcs');
+    x.links.forEach(l => { const a = make('a', l.label + ' 열기'); a.href = l.url; a.target = '_blank'; a.rel = 'noopener'; srcs.appendChild(a); });
+    box.appendChild(srcs);
+  }
   li.appendChild(box); $('decideList').appendChild(li);
 });
+$('viewerShut').addEventListener('click', () => $('viewer').close());
+$('viewer').addEventListener('click', e => { if (e.target === $('viewer')) $('viewer').close(); });
+if (B.no_budget) { document.querySelector('.bento').classList.add('nobudget'); $('money').hidden = true; $('budget').hidden = true; }
 if (!B.decide.length) $('decideList').appendChild(make('li', '결재 흐름이 막힌 곳이 없어요.', 'task empty'));
 
 // 문서 흐름: 길잡이가 있으면 단계(준비 → 안내 → 운영 → 마무리)로 묶고, 필요한데 아직 없는 문서는 '만들 문서' 줄로,

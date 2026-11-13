@@ -1,18 +1,18 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "chilseo-plugins",
-  "description": "칠서초등학교 선생님들이 함께 쓰는 Claude 플러그인 묶음: 처음 쓰는 선생님 시작 안내, 학교 계획서·기안문·가정통신문·사업 보드 만들기, 웹 앱 디자인·문구",
+  "description": "칠서초등학교 선생님들이 함께 쓰는 Claude 플러그인 묶음: 처음 쓰는 선생님 시작 안내, 학교 계획서·기안문·가정통신문·사업 보드 만들기, 웹 앱 디자인·문구, 원고·대본을 선생님 말투로 쓰기",
   "owner": {
     "name": "Jongwook Yoo (칠서초등학교)"
   },
   "metadata": {
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "plugins": [
     {
       "name": "chilseo-writing",
-      "description": "웹 앱·수업 도구를 만들 때 쓰는 디자인·문구 스킬 4종: toss-writing(화면 문구·다크패턴 점검), toss-design(흐름·화면 디자인), krds-design(공공·학교 서식 화면), web-assets(저작권 확실한 글꼴·아이콘 넣기)",
-      "version": "0.1.0",
+      "description": "웹 앱과 글을 만들 때 쓰는 디자인·문구·글쓰기 스킬 5종: toss-writing(화면 문구·다크패턴 점검), toss-design(흐름·화면 디자인), krds-design(공공·학교 서식 화면), web-assets(저작권 확실한 글꼴·아이콘 넣기), dori-voice(사례 보고서·공모전 원고·연수 대본을 비유 없이 사실로, 글쓴이 말투로 쓰고 고치기)",
+      "version": "0.2.0",
       "author": {
         "name": "Jongwook Yoo (칠서초등학교)"
       },
@@ -22,13 +22,15 @@
         "디자인",
         "UX 라이팅",
         "KRDS",
-        "수업 도구"
+        "수업 도구",
+        "글쓰기",
+        "원고 윤문"
       ]
     },
     {
       "name": "chilseo-docs",
-      "description": "학교 문서 스킬 5종: school-start(처음 쓸 때 준비물 확인·설치, 학교 설정 한 번만, 첫 부탁 안내), school-plan-hwpx(계획서 원고 → 한글 내부결재 양식), school-gongmun-draft(기안문 종이 모양 화면·에듀파인 복사·예산 장부·검산), school-newsletter(가정통신문 한글 파일 + 보호자용 미리보기), school-project-board(사업 하나의 필요한 문서·지금 할 일·다음 할 일·예산 장부를 한 장의 보드로)",
-      "version": "0.4.0",
+      "description": "학교 문서 스킬 5종: school-start(처음 쓸 때 준비물 확인·설치, 학교 설정 한 번만, 첫 부탁 안내), school-plan-hwpx(계획서 원고 → 한글 내부결재 양식), school-gongmun-draft(기안문 종이 모양 화면·에듀파인 복사·예산 장부·검산), school-newsletter(가정통신문 한글 파일 + 보호자용 미리보기), school-project-board(사업 하나의 필요한 문서·지금 할 일·다음 할 일·예산 장부를 한 장의 보드로, 정할 것마다 공문 캡처·원문 링크)",
+      "version": "0.5.0",
       "author": {
         "name": "Jongwook Yoo (칠서초등학교)"
       },

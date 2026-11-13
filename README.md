@@ -13,7 +13,7 @@ Claude Code는 Claude 데스크톱 앱의 **Code 탭**이나 터미널에서 씁
    /plugin marketplace add sunrisebell8027-glitch/chilseo-claude-plugins
    /plugin install chilseo-docs@chilseo-plugins
    ```
-   수업용 웹 앱도 만들 거면 `/plugin install chilseo-writing@chilseo-plugins`를 더 넣습니다.
+   수업용 웹 앱을 만들거나 원고·대본을 다듬을 거면 `/plugin install chilseo-writing@chilseo-plugins`를 더 넣습니다.
    한글 파일 미리보기 도구(kordoc)를 켤지 물으면 허용해도 됩니다. Node.js가 있어야 움직이고, 없어도 문서 만들기는 됩니다.
 3. **Claude Code를 다시 시작합니다.**
 4. **"처음이에요. 시작하기 도와주세요."라고 말합니다.** Claude가 준비물(Python 등)을 확인해 없는 것을 설치하고, 학교 이름과 결재선을 한 번 묻고, 무엇을 부탁할 수 있는지 보여 줍니다. 이름·전화번호는 선생님 컴퓨터의 `학교설정.json`에만 저장하고 어디에도 올리지 않습니다.
@@ -39,6 +39,7 @@ claude plugin install chilseo-docs@chilseo-plugins
 | "○○ 사업 보드를 만들어 주세요. 무엇부터 해야 해요?" | 필요한 문서와 지금 할 일·다음 할 일이 담긴 보드 | chilseo-docs |
 | "처음이에요. 시작하기 도와주세요." | 준비물 확인·설치, 학교 설정 저장, 할 수 있는 일 안내 | chilseo-docs |
 | "우리 반 ○○ 웹 앱을 만들어 주세요" | 보기 좋고 문구가 쉬운 수업용 웹 앱(토스·KRDS 공개 원칙 참고) | [chilseo-writing](plugins/chilseo-writing/README.md) |
+| "이 사례 보고서 원고를 제 말투로 다듬어 주세요" | 비유·격언 없이 사실로 쓴 원고, 전/후 표, 남은 표현 검사 | chilseo-writing |
 | "이 한글 파일을 읽고 고쳐 주세요" | HWP·HWPX 읽기·채우기·고치기·미리보기 | kordoc (다른 분이 만든 도구) |
 
 ## 첫 부탁 예시
@@ -79,6 +80,7 @@ Claude Code 대신 Claude 앱(웹·데스크톱의 채팅 화면)을 쓰신다�
    - 가정통신문 만들기: `school-newsletter.zip`
    - 사업 보드(필요한 문서와 할 일 순서): `school-project-board.zip`
    - 웹 앱 만들기: `toss-writing.zip`, `toss-design.zip`, `krds-design.zip`, `web-assets.zip`
+   - 원고·대본 다듬기: `dori-voice.zip`
    - 시작하기(`school-start`)는 Claude Code 전용이라 zip이 없습니다.
 2. **Claude 설정에서 올립니다.** Claude 왼쪽 아래 이름 → **설정** → **기능(Capabilities)** 으로 갑니다. **코드 실행 및 파일 만들기**를 켠 뒤, **스킬(Skills)** 에서 **스킬 업로드**를 눌러 zip을 하나씩 올립니다.
 3. **새 대화에서 부탁합니다.** 위 "첫 부탁 예시"처럼 말하면 Claude가 알맞은 스킬을 알아서 씁니다.
@@ -98,7 +100,7 @@ Claude Code 대신 Claude 앱(웹·데스크톱의 채팅 화면)을 쓰신다�
 ```
 .claude-plugin/marketplace.json   플러그인 목록
 plugins/chilseo-docs/             시작하기, 학교 계획서·기안문·가정통신문·사업 보드 스킬
-plugins/chilseo-writing/          디자인·문구 스킬 4종
+plugins/chilseo-writing/          디자인·문구·글쓰기 스킬 5종
 tools/make_skill_zips.py          Claude 앱용 스킬 zip 만들기
 .github/workflows/ci.yml          밀어 넣을 때마다 시험, v* 태그에 zip을 Releases에 올림
 dist/                             만든 zip (저장소에는 올리지 않음)

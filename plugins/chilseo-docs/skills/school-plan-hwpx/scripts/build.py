@@ -156,15 +156,23 @@ def validate(data, masthead_text=None):
             elif block['kind'] not in ('heading','subheading','text','note'): raise ValueError('Unknown content block')
 
 # Body-table style from a teacher's own Hangul revision: blue lines,
-# tinted header row with a double bottom rule, thicker outer side lines.
-TABLE_LINE='#6182D6'; TABLE_HEAD_FILL='#DFE6F7'
+# tinted header row with a double bottom rule, a 0.4 mm outer frame.
+TABLE_LINE='#6182D6'; TABLE_HEAD_FILL='#DFE6F7'; TABLE_OUTER='0.4 mm'
 ALIGN={'center':'CENTER','justify':'JUSTIFY','left':'LEFT','right':'RIGHT'}
-def cell_border(ri,ci,ncols):
+# Wrapped "가. …" lines start under the text, not under the marker (내어쓰기 16 pt).
+HANG_INDENT='-1600'
+# Cell padding 1 mm on every side (283 HWPUNIT), set by the teacher on 2026-11-12.
+CELL_MARGIN='283'
+HANG_MARK=re.compile(r'^(?:[가-하]\.|\d+\)|\(\d+\)|[가-하]\))\s')
+def cell_border(ri,ci,ncols,nrows=None):
     """Return (left, right, top, bottom, fill) for a cell by its position."""
-    if ri==0:return (('SOLID','0.15 mm'),('SOLID','0.15 mm'),('SOLID','0.1 mm'),('DOUBLE_SLIM','0.5 mm'),TABLE_HEAD_FILL)
-    left=('SOLID','0.15 mm' if ci==0 else '0.12 mm');right=('SOLID','0.15 mm' if ci==ncols-1 else '0.12 mm')
+    last_row=nrows is not None and ri==nrows-1
+    if ri==0:
+        return (('SOLID',TABLE_OUTER if ci==0 else '0.15 mm'),('SOLID',TABLE_OUTER if ci==ncols-1 else '0.15 mm'),
+                ('SOLID',TABLE_OUTER),('DOUBLE_SLIM','0.5 mm'),TABLE_HEAD_FILL)
+    left=('SOLID',TABLE_OUTER if ci==0 else '0.12 mm');right=('SOLID',TABLE_OUTER if ci==ncols-1 else '0.12 mm')
     top=('DOUBLE_SLIM','0.5 mm') if ri==1 else ('SOLID','0.12 mm')
-    return (left,right,top,('SOLID','0.12 mm'),None)
+    return (left,right,top,('SOLID',TABLE_OUTER if last_row else '0.12 mm'),None)
 
 def load_template(template):
     with zipfile.ZipFile(template) as z: parts={i.filename:z.read(i.filename) for i in z.infolist()}
@@ -203,6 +211,10 @@ def build(data, target, base=None):
         if br is not None:br.set('keepWithNext','1' if heading else '0');br.set('keepLines','0')
         paras.append(el);paras.set('itemCnt',str(len(paras)));return i
     pst={k:para_style(center=(k=='cell'),heading=(k=='heading')) for k in ['heading','text','cell']}
+    pst['hang']=para_style()
+    for margin in paras.find(f"hh:paraPr[@id='{pst['hang']}']",NS).findall('.//hh:margin',NS):
+        for child in margin:
+            if E.QName(child).localname=='intent':child.set('value',HANG_INDENT)
     # Table cells: line spacing 130% with a per-column horizontal alignment.
     cellpst={'CENTER':pst['cell']}
     for a in ('JUSTIFY','LEFT','RIGHT'):
@@ -225,7 +237,8 @@ def build(data, target, base=None):
         counter+=1;return str(counter)
     def ptext(text,kind='text',pagebreak=False,cell=False,align='CENTER'):
         p=copy.deepcopy(para_template)
-        p.set('id',pid());p.set('pageBreak','1' if pagebreak else '0');p.set('paraPrIDRef',cellpst[align] if cell else pst['heading' if kind=='heading' else 'text'])
+        style='heading' if kind=='heading' else ('hang' if kind=='text' and HANG_MARK.match(text) else 'text')
+        p.set('id',pid());p.set('pageBreak','1' if pagebreak else '0');p.set('paraPrIDRef',cellpst[align] if cell else pst[style])
         for child in list(p):p.remove(child)
         run=E.SubElement(p,q('hp:run'),charPrIDRef=chars[kind])
         E.SubElement(run,q('hp:t')).text=text
@@ -253,19 +266,24 @@ def build(data, target, base=None):
             totalheight+=height
             for ci,(value,width) in enumerate(zip(values,widths)):
                 cell=copy.deepcopy(headercell if ri==0 else bodycell);cell.set('header','1' if ri==0 else '0')
-                cell.set('borderFillIDRef',border_fill(cell_border(ri,ci,len(widths))))
+                cell.set('borderFillIDRef',border_fill(cell_border(ri,ci,len(widths),len(block['rows']))))
                 sub=cell.find('hp:subList',NS);sub.set('vertAlign','CENTER')
                 for child in list(sub):sub.remove(child)
                 for line in str(value).split('\n'):sub.append(ptext(line,'cellhead' if ri==0 else 'cell',cell=True,align='CENTER' if ri==0 else align[ci]))
-                cell.find('hp:cellMargin',NS).attrib.update({k:'141' for k in ('left','right','top','bottom')})
+                cell.find('hp:cellMargin',NS).attrib.update({k:CELL_MARGIN for k in ('left','right','top','bottom')})
                 cell.find('hp:cellAddr',NS).attrib.update({'colAddr':str(ci),'rowAddr':str(ri)})
                 cell.find('hp:cellSpan',NS).attrib.update({'colSpan':'1','rowSpan':'1'})
                 cell.find('hp:cellSz',NS).attrib.update({'width':str(width),'height':str(height)})
                 row.append(cell)
         t.find('hp:sz',NS).attrib.update({'width':str(fullwidth),'height':str(totalheight)})
+        inner=t.find('hp:inMargin',NS)
+        if inner is not None:inner.attrib.update({k:CELL_MARGIN for k in ('left','right','top','bottom')})
         return p
     for pi,page in enumerate(data['pages']):
         for bi,block in enumerate(page):
+            # One empty line before each big number (after the first) and before 붙임.
+            if bi>0 and (block['kind']=='heading' or (block['kind']=='text' and block['text'].startswith('붙임'))):
+                sec.append(ptext('','text'))
             if block['kind']=='table':
                 p=table(block)
                 if pi>0 and bi==0:p.set('pageBreak','1')

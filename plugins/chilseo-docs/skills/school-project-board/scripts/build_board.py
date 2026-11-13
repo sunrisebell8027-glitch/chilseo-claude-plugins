@@ -8,7 +8,7 @@ is still open, and every 기안문 written into the board passes the 기안문 c
 The 길잡이 answers say which documents the project needs; a needed document
 that is not in the flow yet is a warning. The last lines say what to do now and next. A failed check writes no page.
 """
-import argparse, datetime as dt, html as html_lib, json, re, sys
+import argparse, base64, datetime as dt, html as html_lib, json, re, sys
 from pathlib import Path
 
 import build_gongmun as gm  # 기안문 스킬의 파일을 그대로 복사해 둔다(같은지 tests에서 본다)
@@ -132,6 +132,14 @@ def validate_data(data):
     for i, row in enumerate(data['decide'], 1):
         if not isinstance(row, dict) or not isinstance(row.get('text'), str) or not row['text'].strip():
             raise ValueError(f'decide {i}번째 항목에 text를 넣어 주세요.')
+        for j, link in enumerate(row.get('links', []), 1):
+            if (not isinstance(link, dict) or not isinstance(link.get('label'), str) or not link['label'].strip()
+                    or not isinstance(link.get('url'), str) or not link['url'].startswith('https://')):
+                raise ValueError(f'decide {i}번째 항목의 links {j}번째에 label과 https:// 로 시작하는 url을 넣어 주세요.')
+        for j, img in enumerate(row.get('images', []), 1):
+            if (not isinstance(img, dict) or not isinstance(img.get('alt'), str) or not img['alt'].strip()
+                    or not isinstance(img.get('src'), str) or Path(img['src']).suffix.lower() not in IMAGE_TYPES):
+                raise ValueError(f'decide {i}번째 항목의 images {j}번째에 alt와 png·jpg 파일 경로(src)를 넣어 주세요.')
     for doc, amount in data.get('amounts', {}).items():
         if not isinstance(doc, str) or not doc:
             raise ValueError('amounts에는 문서 id와 0 이상의 정수 금액을 넣어 주세요.')
@@ -248,6 +256,8 @@ def check(data):
     elif not data['ledger']:
         if data.get('guide', {}).get('budget') == 'yes':
             add('편성액', '편성액 안 집행', 'warn', '예산 장부가 아직 없어요. 예산과목과 편성액을 넣어 주세요.')
+        elif data.get('guide', {}).get('budget') == 'no':
+            add('편성액', '편성액 안 집행', 'ok', '예산을 쓰지 않는 사업이에요.')
         else:
             add('편성액', '편성액 안 집행', 'warn', '예산 장부가 아직 없어요.')
     else: add('편성액', '편성액 안 집행', 'ok', f"남은 돈 {sum(r['left'] for r in rows):,}원")
@@ -322,6 +332,28 @@ def paper(g, res):
             'checks': res, 'status': gm.overall(res)}
 
 
+IMAGE_TYPES = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg'}
+IMAGE_LIMIT = 1_500_000  # 캡처 한 장의 크기 한도(바이트). 보드 파일이 너무 커지지 않게 한다
+
+
+def embed_images(data, base):
+    """정할 것에 붙인 캡처(images.src)를 읽어 보드 파일 안에 넣는다. 경로는 보드 JSON이 있는 폴더 기준."""
+    for i, row in enumerate(data.get('decide', []), 1):
+        for img in row.get('images', []):
+            path = (base / img['src']).resolve()
+            if not path.is_file():
+                raise ValueError(f"decide {i}번째 항목의 캡처 파일을 찾지 못했어요: {img['src']}")
+            raw = path.read_bytes()
+            if len(raw) > IMAGE_LIMIT:
+                raise ValueError(f"decide {i}번째 항목의 캡처가 너무 커요(1.5MB 이하로 줄여 주세요): {img['src']}")
+            img['data'] = f"data:{IMAGE_TYPES[path.suffix.lower()]};base64," + base64.b64encode(raw).decode('ascii')
+
+
+def no_budget(data):
+    """예산을 쓰지 않는다고 답했고 장부도 없으면 남은 돈·예산 장부 칸을 보이지 않는다."""
+    return data.get('guide', {}).get('budget') == 'no' and not data.get('ledger')
+
+
 def page_data(data, results):
     today = day(data['updated'])
     money, _ = amounts(data)
@@ -333,10 +365,14 @@ def page_data(data, results):
     schedule = [{**s, 'date_text': fmt(s['date']), 'days': (day(s['date']) - today).days}
                 for s in sorted(data.get('schedule', []), key=lambda s: s['date'])]
     log = [{**l, 'date_text': fmt(l['date'])} for l in sorted(data.get('log', []), key=lambda l: l['date'], reverse=True)]
+    decide = [{**{k: v for k, v in d.items() if k != 'images'},
+               'images': [{'alt': m['alt'], 'data': m['data']} for m in d.get('images', []) if m.get('data')]}
+              for d in data.get('decide', [])]
     return {'example': data.get('example', False), 'look': data.get('look', ''), 'school': data['school'], 'project': data['project'],
+            'no_budget': no_budget(data),
             'owner': data.get('owner', ''), 'budget_code': data.get('budget_code', ''),
             'period': ' ~ '.join(fmt(p) for p in data.get('period', [])), 'updated': fmt(data['updated']),
-            'decide': data.get('decide', []), 'docs': docs, 'ledger': ledger(data), 'schedule': schedule,
+            'decide': decide, 'docs': docs, 'ledger': ledger(data), 'schedule': schedule,
             'log': log, 'checks': results, 'guide': guide_data(data)}
 
 
@@ -355,6 +391,7 @@ def main():
     try:
         data = json.loads(Path(a.input).read_text(encoding='utf-8'))
         results = check(data)
+        embed_images(data, Path(a.input).resolve().parent)
     except (OSError, json.JSONDecodeError, ValueError, KeyError) as e:
         print(f'검사하지 못했어요: {e}', file=sys.stderr); sys.exit(2)
     except (TypeError, AttributeError, IndexError):
