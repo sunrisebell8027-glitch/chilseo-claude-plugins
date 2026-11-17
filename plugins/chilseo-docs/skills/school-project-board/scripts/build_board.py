@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
-"""Build a project board page (길잡이 · 문서 흐름 · 기안문 · 예산 장부 · 일정 · 작업 기록) from one JSON file.
+"""Build a project board page from one JSON file.
 
-Checks run before the page is written: every 품의 amount equals its ledger lines,
-no ledger line spends more than its 편성액, weekdays written in text match the
-date, finished documents carry a document number, nothing past its due date
-is still open, and every 기안문 written into the board passes the 기안문 checks.
-The 길잡이 answers say which documents the project needs; a needed document
-that is not in the flow yet is a warning. The last lines say what to do now and next. A failed check writes no page.
+Every board has the same four parts: 정할 것 · 할 일 흐름 · 일정 · 작업 기록. Each 할 일 can carry
+its own materials (links, a note, a checklist, preview images) that open when it is pressed.
+Two school-office features switch on only when the project needs them:
+  approval  결재 문서 (기안문, 문서번호, 길잡이) — on when guide/draft/doc_no/need is given, or "approval": true
+  budget    예산 (예산 장부, 품의 금액, 남은 돈) — on when ledger/amounts/budget_code is given,
+            the 길잡이 says the project uses money, or "budget": true
+Without them the page shows no 결재·예산 tile, check or wording.
+
+Checks run before the page is written: weekdays written in text match the date, nothing past
+its due date is still open, [확인 필요] blanks are counted; with budget, every 품의 amount equals
+its ledger lines and no line spends more than its 편성액; with approval, finished documents carry
+a document number and every 기안문 passes the 기안문 checks, and the 길잡이 answers say which
+documents are needed. The last lines say what to do now and next. A failed check writes no page.
 """
 import argparse, base64, datetime as dt, html as html_lib, json, re, sys
 from pathlib import Path
@@ -17,7 +24,14 @@ import guide
 HERE = Path(__file__).resolve().parent
 TEMPLATE = HERE.parent / 'assets' / 'board.html'
 WEEK = '월화수목금토일'
+# 상태 이름은 보드 성격에 맞춘다. doing은 draft와 같은 상태다(작업형 보드에서 쓰기 쉬운 이름)
 STATUS = {'done': '결재 완료', 'review': '결재 중', 'draft': '작성 중', 'todo': '아직'}
+TASK_STATUS = {'done': '마침', 'review': '확인 중', 'draft': '하는 중', 'todo': '아직'}
+STATUS_VALUES = ('done', 'review', 'draft', 'doing', 'todo')
+# 길잡이 없는 보드에서 phase로 묶을 때 쓰는 이름(결재 문서 보드는 guide.PHASES 이름을 쓴다)
+TASK_PHASE = {'prep': '준비', 'notice': '안내', 'run': '진행', 'close': '마무리'}
+# 자료를 아직 붙이지 않은 할 일에서 Claude에게 보낼 부탁 문구
+TASK_PROMPT = '「{project}」 보드의 ‘{title}’에 필요한 자료를 붙여 주세요. 이미 있는 자료는 링크로 넣고, 없는 자료는 만들어서 넣어 주세요.'
 CONFIRM = '[확인 필요]'
 MAX_MONEY = 2**53 - 1
 DOC_NO = re.compile(r'^\S+-\d+$')
@@ -53,9 +67,32 @@ def validate_data(data):
         if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= MAX_MONEY:
             raise ValueError(f'{where}에 0 이상 {MAX_MONEY:,} 이하의 정수를 넣어 주세요.')
 
-    for key in ('school', 'project', 'updated'):
+    def need_links(where, links):
+        if not isinstance(links, list):
+            raise ValueError(f'{where}의 links에는 목록을 넣어 주세요.')
+        for j, link in enumerate(links, 1):
+            if (not isinstance(link, dict) or not isinstance(link.get('label'), str) or not link['label'].strip()
+                    or not isinstance(link.get('url'), str) or not link['url'].startswith('https://')):
+                raise ValueError(f'{where}의 links {j}번째에 label과 https:// 로 시작하는 url을 넣어 주세요.')
+            if link.get('type', 'link') not in ('link', 'video'):
+                raise ValueError(f'{where}의 links {j}번째 type에는 video를 넣거나 칸을 빼 주세요.')
+
+    def need_images(where, images):
+        if not isinstance(images, list):
+            raise ValueError(f'{where}의 images에는 목록을 넣어 주세요.')
+        for j, img in enumerate(images, 1):
+            if (not isinstance(img, dict) or not isinstance(img.get('alt'), str) or not img['alt'].strip()
+                    or not isinstance(img.get('src'), str) or Path(img['src']).suffix.lower() not in IMAGE_TYPES):
+                raise ValueError(f'{where}의 images {j}번째에 alt와 png·jpg 파일 경로(src)를 넣어 주세요.')
+
+    for key in ('project', 'updated'):
         need_text(key)
     need_day('updated', data['updated'])
+    if 'school' in data and not isinstance(data['school'], str):
+        raise ValueError('school에는 학교 이름 글자를 넣거나 칸을 빼 주세요.')
+    for key in ('approval', 'budget'):
+        if key in data and not isinstance(data[key], bool):
+            raise ValueError(f'{key}에는 true 또는 false를 넣거나 칸을 빼 주세요.')
     if 'period' in data:
         if not isinstance(data['period'], list) or len(data['period']) != 2:
             raise ValueError('period에는 시작일과 끝일을 두 개 넣어 주세요.')
@@ -66,6 +103,7 @@ def validate_data(data):
             data[key] = []
         if not isinstance(data[key], list):
             raise ValueError(f'{key}에는 목록을 넣어 주세요.')
+    normalize(data)
     if not isinstance(data.get('amounts', {}), dict):
         raise ValueError('amounts에는 문서 id와 금액을 넣은 객체를 써 주세요.')
     if 'guide' in data and not isinstance(data['guide'], dict):
@@ -81,15 +119,30 @@ def validate_data(data):
     for i, doc in enumerate(data['docs'], 1):
         if not isinstance(doc, dict):
             raise ValueError(f'docs {i}번째 항목을 객체로 고쳐 주세요.')
-        for key in ('id', 'kind', 'title', 'status'):
+        for key in ('id', 'title', 'status'):
             if not isinstance(doc.get(key), str) or not doc[key].strip():
                 raise ValueError(f'docs {i}번째 항목에 {key}를 넣어 주세요.')
         if doc['id'] in ids:
             raise ValueError(f'문서 id가 겹쳐요: {doc["id"]}')
         ids.add(doc['id'])
-        if doc['status'] not in STATUS:
-            allowed = ', '.join(STATUS)
+        if doc['status'] not in STATUS_VALUES:
+            allowed = ', '.join(STATUS_VALUES)
             raise ValueError(f'{doc["id"]}의 status는 {allowed} 가운데 하나로 고쳐 주세요.')
+        for key in ('kind', 'note', 'group'):
+            if key in doc and not isinstance(doc[key], str):
+                raise ValueError(f'{doc["id"]}의 {key}에는 글자를 넣어 주세요.')
+        if 'links' in doc:
+            need_links(doc['id'], doc['links'])
+        if 'images' in doc:
+            need_images(doc['id'], doc['images'])
+        if 'checklist' in doc:
+            if not isinstance(doc['checklist'], list):
+                raise ValueError(f'{doc["id"]}의 checklist에는 목록을 넣어 주세요.')
+            for j, row in enumerate(doc['checklist'], 1):
+                text = row.get('text') if isinstance(row, dict) else row
+                if (not isinstance(text, str) or not text.strip()
+                        or (isinstance(row, dict) and not isinstance(row.get('done', False), bool))):
+                    raise ValueError(f'{doc["id"]}의 checklist {j}번째에 할 것 글자(text)와 done(true·false)을 넣어 주세요.')
         if 'need' in doc and (not isinstance(doc['need'], str) or doc['need'] not in {item['id'] for item in guide.ITEMS}):
             raise ValueError(f'{doc["id"]}의 need에는 길잡이 문서 id를 넣어 주세요.')
         if 'phase' in doc and (not isinstance(doc['phase'], str) or doc['phase'] not in {p['id'] for p in guide.PHASES}):
@@ -132,20 +185,41 @@ def validate_data(data):
     for i, row in enumerate(data['decide'], 1):
         if not isinstance(row, dict) or not isinstance(row.get('text'), str) or not row['text'].strip():
             raise ValueError(f'decide {i}번째 항목에 text를 넣어 주세요.')
-        for j, link in enumerate(row.get('links', []), 1):
-            if (not isinstance(link, dict) or not isinstance(link.get('label'), str) or not link['label'].strip()
-                    or not isinstance(link.get('url'), str) or not link['url'].startswith('https://')):
-                raise ValueError(f'decide {i}번째 항목의 links {j}번째에 label과 https:// 로 시작하는 url을 넣어 주세요.')
-        for j, img in enumerate(row.get('images', []), 1):
-            if (not isinstance(img, dict) or not isinstance(img.get('alt'), str) or not img['alt'].strip()
-                    or not isinstance(img.get('src'), str) or Path(img['src']).suffix.lower() not in IMAGE_TYPES):
-                raise ValueError(f'decide {i}번째 항목의 images {j}번째에 alt와 png·jpg 파일 경로(src)를 넣어 주세요.')
+        need_links(f'decide {i}번째 항목', row.get('links', []))
+        need_images(f'decide {i}번째 항목', row.get('images', []))
     for doc, amount in data.get('amounts', {}).items():
         if not isinstance(doc, str) or not doc:
             raise ValueError('amounts에는 문서 id와 0 이상의 정수 금액을 넣어 주세요.')
         if doc not in ids:
             raise ValueError(f'amounts의 문서 id {doc}가 docs에 없어요.')
         need_int('amounts 금액', amount)
+    if data.get('approval') is False and approval_data(data):
+        raise ValueError('approval을 false로 두었는데 결재 문서 자료(guide·draft·doc_no·need)가 있어요. approval 칸을 빼거나 그 자료를 지워 주세요.')
+    if data.get('budget') is False and budget_data(data):
+        raise ValueError('budget을 false로 두었는데 예산 자료(ledger·amounts·budget_code, 길잡이의 예산 답)가 있어요. budget 칸을 빼거나 그 자료를 지워 주세요.')
+
+
+def normalize(data):
+    """doing(하는 중)은 draft와 같은 상태로 다룬다. 몇 번을 불러도 결과가 같다."""
+    for doc in data.get('docs', []):
+        if isinstance(doc, dict) and doc.get('status') == 'doing':
+            doc['status'] = 'draft'
+
+
+def approval_data(data):
+    """결재 문서 기능을 켜는 자료가 있는지: 길잡이, 기안문, 문서번호, 길잡이 문서 id."""
+    return 'guide' in data or any(d.get('draft') or d.get('doc_no') or d.get('need') for d in data.get('docs', []))
+
+
+def budget_data(data):
+    """예산 기능을 켜는 자료가 있는지: 장부, 품의 금액, 예산과목, 길잡이에서 예산을 쓴다고 한 답."""
+    return bool(data.get('ledger') or data.get('amounts') or data.get('budget_code')
+                or data.get('guide', {}).get('budget') == 'yes')
+
+
+def features(data):
+    """보드에 켤 선택 기능. 명시한 값이 있으면 그 값, 없으면 자료가 있을 때만 켠다(기본은 빼기)."""
+    return {'approval': data.get('approval', approval_data(data)), 'budget': data.get('budget', budget_data(data))}
 
 
 def fmt(iso):
@@ -205,6 +279,8 @@ def draft_input(data, doc):
         others = sum(s['amount'] for s in line['spend'] if s['doc'] != doc['id'])
         ledger.append({'name': line['name'], 'allocated': line['allocated'] - others,
                        'spend': [{'name': s['name'], 'amount': s['amount']} for s in mine]})
+    if not (data.get('school') or '').strip():
+        raise ValueError(f"{doc['id']}에 기안문을 넣으려면 school에 학교 이름을 넣어 주세요.")
     return {**doc['draft'], 'school': data['school'], 'title': doc['title'], 'related': related, 'ledger': ledger}
 
 
@@ -236,42 +312,47 @@ def amounts(data):
 def check(data):
     validate_data(data)
     draft_results = drafts(data)
+    use = features(data)
     out = []
     add = lambda id_, label, st, detail: out.append({'id': id_, 'label': label, 'status': st, 'detail': detail})
     ids = {d['id'] for d in data['docs']}
     rows = ledger(data)
 
-    unknown = sorted({s['doc'] for r in data['ledger'] for s in r['spend']} - ids)
-    per_doc = {}
-    for r in data['ledger']:
-        for s in r['spend']: per_doc[s['doc']] = per_doc.get(s['doc'], 0) + s['amount']
-    money, conflicts = amounts(data)
-    wrong = conflicts + [f'{k}: 품의 {v:,}원 ≠ 장부 {per_doc.get(k, 0):,}원' for k, v in money.items() if per_doc.get(k, 0) != v]
-    wrong += [f'{k}: 품의 금액을 draft 또는 amounts에 넣어 주세요' for k in per_doc if k in ids and k not in money]
-    if unknown or wrong: add('합계', '품의와 장부', 'fail', '; '.join(wrong + [f'없는 문서: {u}' for u in unknown]))
-    else: add('합계', '품의와 장부', 'ok', '품의 금액과 장부 줄이 모두 맞아요.')
+    if use['budget']:
+        unknown = sorted({s['doc'] for r in data['ledger'] for s in r['spend']} - ids)
+        if use['approval']:
+            per_doc = {}
+            for r in data['ledger']:
+                for s in r['spend']: per_doc[s['doc']] = per_doc.get(s['doc'], 0) + s['amount']
+            money, conflicts = amounts(data)
+            wrong = conflicts + [f'{k}: 품의 {v:,}원 ≠ 장부 {per_doc.get(k, 0):,}원' for k, v in money.items() if per_doc.get(k, 0) != v]
+            wrong += [f'{k}: 품의 금액을 draft 또는 amounts에 넣어 주세요' for k in per_doc if k in ids and k not in money]
+            if unknown or wrong: add('합계', '품의와 장부', 'fail', '; '.join(wrong + [f'없는 문서: {u}' for u in unknown]))
+            else: add('합계', '품의와 장부', 'ok', '품의 금액과 장부 줄이 모두 맞아요.')
+        elif unknown: add('합계', '할 일과 장부', 'fail', '장부 줄의 doc이 docs에 없어요: ' + ', '.join(unknown))
+        else: add('합계', '할 일과 장부', 'ok', '장부 줄이 모두 할 일과 이어져 있어요.')
 
-    over = [f"{r['name']} {r['done'] + r['pending']:,}원 > {r['allocated']:,}원" for r in rows if r['left'] < 0]
-    if over: add('편성액', '편성액 안 집행', 'fail', '; '.join(over))
-    elif not data['ledger']:
-        if data.get('guide', {}).get('budget') == 'yes':
-            add('편성액', '편성액 안 집행', 'warn', '예산 장부가 아직 없어요. 예산과목과 편성액을 넣어 주세요.')
-        elif data.get('guide', {}).get('budget') == 'no':
-            add('편성액', '편성액 안 집행', 'ok', '예산을 쓰지 않는 사업이에요.')
-        else:
-            add('편성액', '편성액 안 집행', 'warn', '예산 장부가 아직 없어요.')
-    else: add('편성액', '편성액 안 집행', 'ok', f"남은 돈 {sum(r['left'] for r in rows):,}원")
+        over = [f"{r['name']} {r['done'] + r['pending']:,}원 > {r['allocated']:,}원" for r in rows if r['left'] < 0]
+        if over: add('편성액', '편성액 안 집행', 'fail', '; '.join(over))
+        elif not data['ledger']:
+            if data.get('guide', {}).get('budget') == 'yes':
+                add('편성액', '편성액 안 집행', 'warn', '예산 장부가 아직 없어요. 예산과목과 편성액을 넣어 주세요.')
+            else:
+                add('편성액', '편성액 안 집행', 'warn', '예산 장부가 아직 없어요.')
+        else: add('편성액', '편성액 안 집행', 'ok', f"남은 돈 {sum(r['left'] for r in rows):,}원")
 
     bad = weekday_errors(data)
     add('요일', '요일', 'fail' if bad else 'ok', '; '.join(bad) if bad else '글에 쓴 요일이 모두 맞아요.')
 
-    missing = [d['title'] for d in data['docs'] if d['status'] == 'done' and not DOC_NO.match(d.get('doc_no') or '')]
-    add('문서번호', '문서번호', 'warn' if missing else 'ok',
-        ('결재를 마쳤는데 번호가 빈 문서: ' + ', '.join(missing)) if missing else '결재 마친 문서에 번호가 모두 있어요.')
+    if use['approval']:
+        missing = [d['title'] for d in data['docs'] if d['status'] == 'done' and not DOC_NO.match(d.get('doc_no') or '')]
+        add('문서번호', '문서번호', 'warn' if missing else 'ok',
+            ('결재를 마쳤는데 번호가 빈 문서: ' + ', '.join(missing)) if missing else '결재 마친 문서에 번호가 모두 있어요.')
 
     today = day(data['updated'])
     late = [d['title'] for d in data['docs'] if d['status'] != 'done' and d.get('due') and day(d['due']) < today]
-    add('기한', '기한', 'warn' if late else 'ok', ('기한이 지난 문서: ' + ', '.join(late)) if late else '기한이 지난 문서가 없어요.')
+    what, none = ('문서', '문서가') if use['approval'] else ('할 일', '할 일이')
+    add('기한', '기한', 'warn' if late else 'ok', (f'기한이 지난 {what}: ' + ', '.join(late)) if late else f'기한이 지난 {none} 없어요.')
 
     n = sum(s.count(CONFIRM) for s in strings(data))
     add('빈칸', '빈칸', 'warn' if n else 'ok', f'{CONFIRM}로 둔 곳이 {n}곳이에요.' if n else '빈칸이 없어요.')
@@ -280,7 +361,7 @@ def check(data):
 
     for doc, _, res in draft_results:
         left = [r for r in res if r['status'] != 'ok']
-        add('기안문', f"{doc['kind']} 기안문", gm.overall(res),
+        add('기안문', f"{doc.get('kind') or '품의'} 기안문", gm.overall(res),
             '; '.join(f"{r['label']}: {r['detail']}" for r in left) if left else f'기안문 검사 {len(res)}개를 모두 통과했어요.')
     return out
 
@@ -309,10 +390,46 @@ def guide_data(data):
     return {'answers': data['guide'], 'questions': guide.QUESTIONS, 'items': items, 'phases': guide.PHASES, 'tips': guide.NOW_TIP}
 
 
+def status_names(data):
+    return STATUS if features(data)['approval'] else TASK_STATUS
+
+
+def flow_order(data):
+    """길잡이 없는 보드의 할 일 차례와 묶음 이름: [(할 일, 묶음 이름)].
+    phase(또는 길잡이 문서 id)를 쓰면 단계 순서로 놓고 같은 단계 안에서는 적은 순서를 지킨다. 아니면 적은 순서 그대로.
+    묶음 이름은 group을 쓰면 group, 아니면 단계 이름이다. 둘 다 쓰지 않으면 묶지 않는다."""
+    docs = data['docs']
+    item_phase = {i['id']: i['phase'] for i in guide.ITEMS}
+    phase_of = lambda d: d.get('phase') or item_phase.get(d.get('need')) or 'run'
+    phased = any(d.get('phase') or d.get('need') for d in docs)
+    if phased:
+        rank = {p['id']: i for i, p in enumerate(guide.PHASES)}
+        docs = sorted(docs, key=lambda d: rank[phase_of(d)])
+    names = {p['id']: p['name'] for p in guide.PHASES} if features(data)['approval'] else TASK_PHASE
+    grouped = any(d.get('group') for d in docs)
+    return [(d, d.get('group', '') if grouped else names[phase_of(d)] if phased else '') for d in docs]
+
+
+def now_next(docs):
+    """지금 할 일과 다음 할 일. 하는 중(작성 중)인 것을 먼저, 그다음 아직 시작하지 않은 것, 확인을 기다리는 것은 맨 뒤.
+    같은 상태끼리는 흐름 순서를 지킨다."""
+    rank = {'draft': 0, 'todo': 1, 'review': 2}
+    left = sorted((d for d in docs if d['status'] != 'done'), key=lambda d: rank[d['status']])
+    return (left[0] if left else None), (left[1] if len(left) > 1 else None)
+
+
 def say_steps(data):
     """선생님에게 그대로 말해 줄 차례: 지금 할 일과 다음 할 일."""
+    normalize(data)
     if 'guide' not in data:
-        return ['차례: 길잡이 답이 없어서 정하지 못했어요. guide에 답을 넣으면 지금 할 일을 알려 드려요.']
+        names = status_names(data)
+        if not data['docs']:
+            return ['지금 할 일: 아직 할 일이 없어요. docs에 할 일을 넣으면 알려 드려요.', '다음 할 일: 없어요.']
+        now, nxt = now_next([d for d, _ in flow_order(data)])
+        if not now:
+            return ['지금 할 일: 할 일을 모두 마쳤어요.', '다음 할 일: 없어요.']
+        line = lambda d: f"{d['title']} ({names[d['status']]})"
+        return [f'지금 할 일: {line(now)}', '다음 할 일: ' + (line(nxt) if nxt else '없어요.')]
     st = guide.steps(data['guide'], data['docs'])
     name = {'now': '지금 할 일', 'next': '다음 할 일'}
     lines = [f"{name[x['state']]}: {x['do']}" + (f" ({x['doc']['title']}, {STATUS[x['doc']['status']]})" if x['doc'] else '') +
@@ -337,42 +454,54 @@ IMAGE_LIMIT = 1_500_000  # 캡처 한 장의 크기 한도(바이트). 보드 �
 
 
 def embed_images(data, base):
-    """정할 것에 붙인 캡처(images.src)를 읽어 보드 파일 안에 넣는다. 경로는 보드 JSON이 있는 폴더 기준."""
-    for i, row in enumerate(data.get('decide', []), 1):
+    """정할 것의 캡처와 할 일의 미리보기 그림(images.src)을 읽어 보드 파일 안에 넣는다. 경로는 보드 JSON이 있는 폴더 기준."""
+    rows = [(f'decide {i}번째 항목의 캡처', row) for i, row in enumerate(data.get('decide', []), 1)]
+    rows += [(f"docs의 {d.get('id')} 그림", d) for d in data.get('docs', [])]
+    for what, row in rows:
         for img in row.get('images', []):
             path = (base / img['src']).resolve()
             if not path.is_file():
-                raise ValueError(f"decide {i}번째 항목의 캡처 파일을 찾지 못했어요: {img['src']}")
+                raise ValueError(f"{what} 파일을 찾지 못했어요: {img['src']}")
             raw = path.read_bytes()
             if len(raw) > IMAGE_LIMIT:
-                raise ValueError(f"decide {i}번째 항목의 캡처가 너무 커요(1.5MB 이하로 줄여 주세요): {img['src']}")
+                raise ValueError(f"{what}{'가' if what.endswith('캡처') else '이'} 너무 커요(1.5MB 이하로 줄여 주세요): {img['src']}")
             img['data'] = f"data:{IMAGE_TYPES[path.suffix.lower()]};base64," + base64.b64encode(raw).decode('ascii')
 
 
-def no_budget(data):
-    """예산을 쓰지 않는다고 답했고 장부도 없으면 남은 돈·예산 장부 칸을 보이지 않는다."""
-    return data.get('guide', {}).get('budget') == 'no' and not data.get('ledger')
+def shown_images(row):
+    """화면에 넣을 그림: 파일 경로는 빼고 설명과 넣어 둔 그림만."""
+    return [{'alt': m['alt'], 'data': m['data']} for m in row.get('images', []) if m.get('data')]
 
 
 def page_data(data, results):
+    normalize(data)
     today = day(data['updated'])
+    use = features(data)
+    names = status_names(data)
     money, _ = amounts(data)
     papers = {doc['id']: paper(g, res) for doc, g, res in drafts(data)}
-    docs = [{**{k: v for k, v in d.items() if k != 'draft'}, 'status_label': STATUS[d['status']],
+    # 길잡이가 있으면 화면이 길잡이 단계로 묶고, 없으면 여기서 정한 차례·묶음을 그대로 쓴다
+    order = [(d, '') for d in data['docs']] if 'guide' in data else flow_order(data)
+    now, nxt = (None, None) if 'guide' in data else now_next([d for d, _ in order])
+    checklist = lambda d: [{'text': c, 'done': False} if isinstance(c, str) else {'text': c['text'], 'done': c.get('done', False)}
+                           for c in d.get('checklist', [])]
+    docs = [{**{k: v for k, v in d.items() if k not in ('draft', 'images', 'checklist')},
+             'kind': d.get('kind', ''), 'group': group, 'status_label': names[d['status']],
              'date_text': fmt(d['date']) if d.get('date') else '', 'due_text': fmt(d['due']) if d.get('due') else '',
-             'amount': money.get(d['id']), 'draft': papers.get(d['id'])}
-            for d in data['docs']]
+             'amount': money.get(d['id']) if use['budget'] else None, 'draft': papers.get(d['id']),
+             'links': d.get('links', []), 'note': d.get('note', ''), 'checklist': checklist(d), 'images': shown_images(d),
+             'ask': TASK_PROMPT.format(project=data['project'], title=d['title'])}
+            for d, group in order]
     schedule = [{**s, 'date_text': fmt(s['date']), 'days': (day(s['date']) - today).days}
                 for s in sorted(data.get('schedule', []), key=lambda s: s['date'])]
     log = [{**l, 'date_text': fmt(l['date'])} for l in sorted(data.get('log', []), key=lambda l: l['date'], reverse=True)]
-    decide = [{**{k: v for k, v in d.items() if k != 'images'},
-               'images': [{'alt': m['alt'], 'data': m['data']} for m in d.get('images', []) if m.get('data')]}
-              for d in data.get('decide', [])]
-    return {'example': data.get('example', False), 'look': data.get('look', ''), 'school': data['school'], 'project': data['project'],
-            'no_budget': no_budget(data),
+    decide = [{**{k: v for k, v in d.items() if k != 'images'}, 'images': shown_images(d)} for d in data.get('decide', [])]
+    return {'example': data.get('example', False), 'look': data.get('look', ''), 'school': data.get('school', '').strip(),
+            'project': data['project'], 'features': use,
             'owner': data.get('owner', ''), 'budget_code': data.get('budget_code', ''),
             'period': ' ~ '.join(fmt(p) for p in data.get('period', [])), 'updated': fmt(data['updated']),
-            'decide': decide, 'docs': docs, 'ledger': ledger(data), 'schedule': schedule,
+            'decide': decide, 'docs': docs, 'ledger': ledger(data) if use['budget'] else [], 'schedule': schedule,
+            'now': now['id'] if now else None, 'next': nxt['id'] if nxt else None,
             'log': log, 'checks': results, 'guide': guide_data(data)}
 
 

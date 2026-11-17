@@ -12,6 +12,60 @@ FRESH = json.loads((SKILL / 'examples' / 'sample_first_start_board.json').read_t
 UNANSWERED = json.loads((SKILL / 'examples' / 'sample_unanswered_start_board.json').read_text(encoding='utf-8'))
 
 
+TASK = json.loads((SKILL / 'examples' / 'sample_video_shoot_board.json').read_text(encoding='utf-8'))
+
+# 보드 화면의 스크립트를 node로 끝까지 돌려 보는 가짜 문서. 글자와 숨김, 칸 배치 값을 남겨 둔다
+HARNESS = r'''
+class Element {
+  constructor() { this.childNodes = []; this.children = this.childNodes; this.dataset = {}; this.hidden = false; this.cls = new Set();
+    this.style = { props: {}, setProperty(k, v) { this.props[k] = v; } };
+    const self = this; this.classList = { add(c) { self.cls.add(c); }, remove(c) { self.cls.delete(c); }, toggle(c, on) { (on ?? !self.cls.has(c)) ? self.cls.add(c) : self.cls.delete(c); return self.cls.has(c); } }; }
+  get firstChild() { return this.childNodes[0]; }
+  set textContent(value) { this.childNodes = []; this._text = value; }
+  get textContent() { return this._text || ''; }
+  set className(v) { this.cls = new Set(String(v).split(' ').filter(Boolean)); }
+  get className() { return [...this.cls].join(' '); }
+  appendChild(node) { this.childNodes.push(node); return node; }
+  append(...nodes) { nodes.forEach(node => this.appendChild(node)); }
+  setAttribute() {} addEventListener() {} remove() {} after() {} focus() {} scrollIntoView() {} select() {}
+  querySelector() { return new Element(); }
+}
+const elements = new Map();
+const __el = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); };
+global.document = {
+  getElementById: __el,
+  querySelector(sel) { return __el('query:' + sel); }, querySelectorAll() { return []; },
+  createElement() { return new Element(); }, createTextNode(text) { const e = new Element(); e.textContent = text; return e; },
+  documentElement: new Element(), execCommand() { return false; }
+};
+global.localStorage = { getItem() { throw Error('localStorage disabled'); }, setItem() { throw Error('localStorage disabled'); }, removeItem() { throw Error('localStorage disabled'); } };
+global.matchMedia = () => ({ matches: false, addEventListener() {} });
+global.IntersectionObserver = class { observe() {} disconnect() {} };
+global.requestAnimationFrame = fn => fn();
+global.navigator = { clipboard: { writeText() { return Promise.resolve(); } } };
+'''
+REPORT = r'''
+const text = e => (e._text || '') + e.childNodes.map(text).join('');
+const ids = ['guide', 'decide', 'docs', 'money', 'budget', 'schedule', 'checks', 'log'];
+console.log(JSON.stringify({
+  heads: Object.fromEntries(['eyebrow', 'decideHead', 'docsHead', 'windowTitle', 'checkHead', 'flow', 'decideList', 'moneyHead', 'budgetHead'].map(k => [k, text(__el(k))])),
+  paper: text(paper),
+  hidden: Object.fromEntries(ids.map(k => [k, __el(k).hidden])),
+  areas: __el('query:.bento').style.props,
+}));
+'''
+
+
+def render_page(data):
+    """보드를 만들어 화면 스크립트를 node로 돌리고, 보이는 글과 숨긴 칸, 칸 배치를 돌려준다."""
+    data = copy.deepcopy(data)
+    html = bb.render(data, bb.check(data))
+    script = html.split('<script>', 1)[1].split('</script>', 1)[0]
+    run = subprocess.run(['node', '-e', HARNESS + '\n' + script + '\n' + REPORT], capture_output=True, text=True)
+    if run.returncode: raise AssertionError(run.stderr)
+    return json.loads(run.stdout)
+
+
 def status(results, id_):
     return next(r['status'] for r in results if r['id'] == id_)
 
@@ -122,11 +176,14 @@ class BoardTest(unittest.TestCase):
         self.assertTrue(bb.say_steps(UNANSWERED)[0].startswith('지금 할 일:'))
         self.assertIn('남은 질문', bb.say_steps(UNANSWERED)[1])
 
-    def test_board_without_guide_builds_and_explains_how_to_get_steps(self):
+    def test_board_without_guide_says_now_and_next_from_its_own_items(self):
         data = {'school': '한빛초등학교', 'project': '2026. 시작 보드', 'updated': '2026-03-02'}
         self.assertFalse([r for r in bb.check(data) if r['status'] == 'fail'])
-        self.assertEqual(bb.say_steps(data), ['차례: 길잡이 답이 없어서 정하지 못했어요. guide에 답을 넣으면 지금 할 일을 알려 드려요.'])
+        self.assertEqual(bb.say_steps(data), ['지금 할 일: 아직 할 일이 없어요. docs에 할 일을 넣으면 알려 드려요.', '다음 할 일: 없어요.'])
         self.assertEqual(bb.page_data(data, bb.check(data))['docs'], [])
+        no_guide = copy.deepcopy(SAMPLE); no_guide.pop('guide')
+        self.assertEqual(bb.say_steps(no_guide)[0], '지금 할 일: 2026. 과학 탐구 동아리 실험 재료 구입 및 간식비 지출 건의 (작성 중)')
+        self.assertTrue(bb.say_steps(no_guide)[1].startswith('다음 할 일: 2026. 과학 탐구 동아리 운영 결과 보고'))
 
     def test_invalid_status_phase_and_empty_project_have_korean_errors(self):
         for change, phrase in [
@@ -199,7 +256,10 @@ class BoardTest(unittest.TestCase):
         self.assertIn('예산 장부를 넣으면 남은 돈을 보여 드려요.', html)
         self.assertIn("$('money').querySelector('.stat').hidden = true", html)
         self.assertIn('예산과목과 편성액을 넣으면 장부를 보여 드려요.', html)
+        # 예산 자료가 하나도 없으면 예산 검사를 하지 않는다(기본은 빼기). 예산과목만 있어도 켠다
         no_guide = {'school': '한빛초등학교', 'project': '시작', 'updated': '2026-03-02'}
+        self.assertNotIn('편성액', [r['id'] for r in bb.check(no_guide)])
+        no_guide['budget_code'] = '교육운영비'
         self.assertIn('장부가 아직 없어요', next(r for r in bb.check(no_guide) if r['id'] == '편성액')['detail'])
 
     def test_unknown_need_and_bad_nested_fields_are_korean_errors(self):
@@ -255,30 +315,7 @@ class BoardTest(unittest.TestCase):
         no_guide = copy.deepcopy(SAMPLE)
         no_guide.pop('guide')
         examples.append(no_guide)
-        harness = r'''
-class Element {
-  constructor() { this.childNodes = []; this.children = this.childNodes; this.dataset = {}; this.style = { setProperty() {} }; this.classList = { add() {} }; this.hidden = false; }
-  get firstChild() { return this.childNodes[0]; }
-  set textContent(value) { this.childNodes = []; this._text = value; }
-  get textContent() { return this._text || ''; }
-  appendChild(node) { this.childNodes.push(node); return node; }
-  append(...nodes) { nodes.forEach(node => this.appendChild(node)); }
-  setAttribute() {} addEventListener() {} remove() {} after() {} focus() {} scrollIntoView() {} select() {}
-  querySelector() { return new Element(); }
-}
-const elements = new Map();
-global.document = {
-  getElementById(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); },
-  querySelector() { return new Element(); }, querySelectorAll() { return []; },
-  createElement() { return new Element(); }, createTextNode(text) { const e = new Element(); e.textContent = text; return e; },
-  documentElement: new Element(), execCommand() { return false; }
-};
-global.localStorage = { getItem() { throw Error('localStorage disabled'); }, setItem() { throw Error('localStorage disabled'); }, removeItem() { throw Error('localStorage disabled'); } };
-global.matchMedia = () => ({ matches: false, addEventListener() {} });
-global.IntersectionObserver = class { observe() {} disconnect() {} };
-global.requestAnimationFrame = fn => fn();
-global.navigator = { clipboard: { writeText() { return Promise.resolve(); } } };
-'''
+        harness = HARNESS
         for index, data in enumerate(examples):
             with self.subTest(example=index):
                 results = bb.check(data)
@@ -358,17 +395,15 @@ global.navigator = { clipboard: { writeText() { return Promise.resolve(); } } };
             data = {'decide': [{'text': '정해 주세요', 'images': [{'src': '큰.png', 'alt': '공문'}]}]}
             with self.assertRaisesRegex(ValueError, '1.5MB'): bb.embed_images(data, tmp)
 
-    def test_board_without_budget_hides_money_tiles(self):
+    def test_board_without_budget_drops_money_tiles_and_checks(self):
         data = {'school': '한빛초등학교', 'project': '설문', 'updated': '2026-03-02', 'guide': {'budget': 'no'}}
         checks = bb.check(data)
-        row = next(r for r in checks if r['id'] == '편성액')
-        self.assertEqual(row['status'], 'ok')
-        self.assertIn('예산을 쓰지 않는', row['detail'])
-        self.assertTrue(bb.page_data(data, checks)['no_budget'])
-        self.assertFalse(bb.page_data(copy.deepcopy(SAMPLE), bb.check(copy.deepcopy(SAMPLE)))['no_budget'])
-        html = (SKILL / 'assets' / 'board.html').read_text(encoding='utf-8')
-        self.assertIn("if (B.no_budget)", html)
-        self.assertIn('.bento.nobudget', html)
+        self.assertFalse({'합계', '편성액'} & {r['id'] for r in checks})
+        self.assertEqual(bb.page_data(data, checks)['features'], {'approval': True, 'budget': False})
+        self.assertEqual(bb.page_data(copy.deepcopy(SAMPLE), bb.check(copy.deepcopy(SAMPLE)))['features'], {'approval': True, 'budget': True})
+        page = render_page(data)
+        self.assertTrue(page['hidden']['money'] and page['hidden']['budget'])
+        self.assertNotIn('money', page['areas']['--a3'])
 
     def test_sample_decide_link_reaches_the_page_data(self):
         data = copy.deepcopy(SAMPLE)
@@ -376,6 +411,185 @@ global.navigator = { clipboard: { writeText() { return Promise.resolve(); } } };
         links = [l for d in page['decide'] for l in d.get('links', [])]
         self.assertEqual(links[0]['url'], 'https://example.com/notice')
         self.assertTrue(all(d['images'] == [] for d in page['decide']))
+
+    # ---- 범용 보드: 결재·예산·학교 없이도 정할 것 · 할 일 흐름 · 일정 · 작업 기록만으로 읽힌다 ----
+
+    def test_task_board_turns_off_approval_and_budget_by_default(self):
+        data = copy.deepcopy(TASK)
+        self.assertEqual(bb.features(data), {'approval': False, 'budget': False})
+        results = bb.check(data)
+        self.assertFalse([r for r in results if r['status'] == 'fail'])
+        self.assertEqual([r['id'] for r in results], ['요일', '기한', '빈칸'])
+        self.assertIn('할 일이 없어요', next(r for r in results if r['id'] == '기한')['detail'])
+        page = bb.page_data(data, results)
+        self.assertEqual(page['ledger'], [])
+        self.assertEqual(page['school'], '')
+        self.assertEqual({d['status_label'] for d in page['docs']}, {'마침', '확인 중', '하는 중', '아직'})
+
+    def test_task_board_says_doing_first_then_todo_and_waits_for_review(self):
+        self.assertEqual(bb.say_steps(copy.deepcopy(TASK)), [
+            '지금 할 일: ② 독서 기록 대시보드 만들기 (1분 30초) (하는 중)',
+            '다음 할 일: ③ 상담 기록 표 만들기 (2분) (아직)'])
+        page = bb.page_data(copy.deepcopy(TASK), bb.check(copy.deepcopy(TASK)))
+        self.assertEqual((page['now'], page['next']), ('v2', 'v3'))
+        docs = [{'id': i, 'title': i, 'status': s} for i, s in [('a', 'review'), ('b', 'todo'), ('c', 'todo'), ('d', 'done')]]
+        now, nxt = bb.now_next(docs)
+        self.assertEqual((now['id'], nxt['id']), ('b', 'c'))
+        self.assertEqual(bb.now_next([{'id': 'a', 'title': 'a', 'status': 'review'}])[0]['id'], 'a')
+        done = copy.deepcopy(TASK)
+        for d in done['docs']: d['status'] = 'done'
+        self.assertEqual(bb.say_steps(done), ['지금 할 일: 할 일을 모두 마쳤어요.', '다음 할 일: 없어요.'])
+
+    def test_task_items_carry_links_note_checklist_and_ask(self):
+        page = bb.page_data(copy.deepcopy(TASK), bb.check(copy.deepcopy(TASK)))
+        v1, v2, v3 = (next(d for d in page['docs'] if d['id'] == k) for k in ('v1', 'v2', 'v3'))
+        self.assertEqual(v1['links'][0]['type'], 'video')
+        self.assertEqual([c['done'] for c in v1['checklist']], [True, True, False])
+        self.assertEqual(v2['checklist'][0], {'text': '알림 끄기', 'done': False})
+        self.assertTrue(v2['note'])
+        self.assertEqual((v3['links'], v3['note'], v3['checklist'], v3['images']), ([], '', [], []))
+        self.assertIn('‘③ 상담 기록 표 만들기 (2분)’', v3['ask'])
+        self.assertIn(TASK['project'], v3['ask'])
+        self.assertEqual([d['group'] for d in page['docs']], ['준비', '촬영', '촬영', '촬영', '촬영', '마무리'])
+
+    def test_phase_without_group_uses_plain_step_names(self):
+        data = {'project': '영상', 'updated': '2026-11-16', 'docs': [
+            {'id': 'send', 'title': '보내기', 'status': 'todo', 'phase': 'close'},
+            {'id': 'v1', 'title': '찍기', 'status': 'doing', 'phase': 'run'}]}
+        page = bb.page_data(data, bb.check(data))
+        self.assertEqual([(d['id'], d['group']) for d in page['docs']], [('v1', '진행'), ('send', '마무리')])
+        self.assertEqual(page['docs'][0]['status'], 'draft')
+        self.assertEqual(page['docs'][0]['status_label'], '하는 중')
+
+    @unittest.skipUnless(shutil.which('node'), 'node가 없어요')
+    def test_task_page_shows_no_office_words_or_empty_tiles(self):
+        page = render_page(TASK)
+        heads = page['heads']
+        self.assertEqual(heads['eyebrow'], '프로젝트 보드')
+        self.assertTrue(heads['docsHead'].startswith('할 일 흐름.'))
+        self.assertEqual(heads['windowTitle'], '할 일')
+        self.assertIn('지금 할 일', heads['flow'])
+        self.assertIn('다음', heads['flow'])
+        self.assertIn('관련 할 일 보기', heads['decideList'])
+        shown = ' '.join(v for k, v in heads.items() if not page['hidden'].get({'moneyHead': 'money', 'budgetHead': 'budget', 'checkHead': 'checks'}.get(k, ''), False))
+        for word in ('결재', '기안문', '편성액', '품의', '길잡이', '선생님'):
+            self.assertNotIn(word, shown + page['paper'])
+        self.assertEqual(page['hidden'], {'guide': True, 'decide': False, 'docs': False, 'money': True, 'budget': True,
+                                          'schedule': False, 'checks': True, 'log': False})
+        self.assertEqual(page['areas'], {'--a1': '"decide" "docs" "schedule" "log"',
+                                         '--a2': '"decide decide" "docs docs" "schedule log"',
+                                         '--a3': '"decide decide decide" "docs docs docs" "schedule log log"'})
+        # 넓은 화면에서는 지금 할 일(②)을 펼쳐 두고, 붙인 자료를 보여 준다
+        self.assertIn('② 독서 기록 대시보드 만들기', page['paper'])
+        self.assertIn('자료 열기', page['paper'])
+        self.assertIn('할 것 3개 가운데 0개를 마쳤어요', page['paper'])
+
+    @unittest.skipUnless(shutil.which('node'), 'node가 없어요')
+    def test_task_item_without_materials_offers_a_request(self):
+        data = copy.deepcopy(TASK)
+        for d in data['docs']:
+            if d['id'] in ('v1', 'v2'): d['status'] = 'done'
+        page = render_page(data)  # 지금 할 일은 ③(아직 시작하지 않은 첫 할 일), 붙인 자료가 없다
+        self.assertIn('③ 상담 기록 표 만들기', page['paper'])
+        self.assertIn('자료를 붙이면 여기에서 바로 열 수 있어요.', page['paper'])
+        self.assertIn('부탁 문구 복사하기', page['paper'])
+        self.assertNotIn('기안문', page['paper'])
+
+    @unittest.skipUnless(shutil.which('node'), 'node가 없어요')
+    def test_task_page_shows_checks_only_when_something_needs_a_look(self):
+        data = copy.deepcopy(TASK)
+        data['docs'][1]['due'] = '2026-11-10'  # 지난 기한
+        page = render_page(data)
+        self.assertFalse(page['hidden']['checks'])
+        self.assertIn('확인할 것 1개', page['heads']['checkHead'])
+        self.assertEqual(page['areas']['--a3'], '"decide decide decide" "docs docs docs" "schedule schedule checks" "log log log"')
+
+    @unittest.skipUnless(shutil.which('node'), 'node가 없어요')
+    def test_office_board_keeps_its_tiles_and_words(self):
+        page = render_page(SAMPLE)
+        self.assertEqual(page['heads']['eyebrow'], '프로젝트 보드 · 한빛초등학교')
+        self.assertTrue(page['heads']['docsHead'].startswith('문서 흐름. 결재 문서'))
+        self.assertEqual(page['heads']['windowTitle'], '결재 문서')
+        self.assertIn('선생님이 직접 해 주세요.', page['heads']['decideHead'])
+        self.assertIn('편성액', page['heads']['moneyHead'])
+        self.assertFalse(any(page['hidden'][k] for k in ('guide', 'money', 'budget', 'checks')))
+        self.assertEqual(page['areas']['--a3'], '"guide guide guide" "decide decide money" "docs docs docs" "budget schedule checks" "log log log"')
+        self.assertEqual(page['areas']['--a2'], '"guide guide" "decide decide" "money money" "docs docs" "budget schedule" "checks log"')
+
+    @unittest.skipUnless(shutil.which('node'), 'node가 없어요')
+    def test_task_board_with_a_budget_speaks_plainly(self):
+        data = copy.deepcopy(TASK)
+        data['ledger'] = [{'name': '간식', 'allocated': 50000, 'spend': [{'doc': 'send', 'name': '간식', 'amount': 20000}]}]
+        self.assertEqual(bb.features(data), {'approval': False, 'budget': True})
+        results = bb.check(data)
+        self.assertEqual(status(results, '합계'), 'ok')
+        self.assertNotIn('문서번호', [r['id'] for r in results])
+        page = render_page(data)
+        self.assertIn('예산 50,000원 가운데', page['heads']['moneyHead'])
+        self.assertIn('1줄 모두 예산 안이에요.', page['heads']['budgetHead'])
+        data['ledger'][0]['spend'][0]['doc'] = 'nope'
+        self.assertEqual(status(bb.check(data), '합계'), 'fail')
+
+    def test_board_without_school_builds_but_a_draft_needs_one(self):
+        data = {'project': '행사 준비', 'updated': '2026-05-01',
+                'docs': [{'id': 'a', 'title': '장소 정하기', 'status': 'todo'}]}
+        self.assertFalse([r for r in bb.check(data) if r['status'] == 'fail'])
+        self.assertEqual(bb.page_data(data, bb.check(data))['school'], '')
+        with self.assertRaisesRegex(ValueError, 'school'):
+            bb.check({**data, 'school': 3})
+        data = copy.deepcopy(SAMPLE); data.pop('school')
+        with self.assertRaisesRegex(ValueError, 'school에 학교 이름'):
+            bb.check(data)
+
+    def test_explicit_switches_win_but_cannot_hide_existing_data(self):
+        data = {'project': '사업', 'updated': '2026-03-02', 'approval': True, 'budget': True}
+        self.assertEqual(bb.features(data), {'approval': True, 'budget': True})
+        self.assertIn('편성액', [r['id'] for r in bb.check(data)])
+        self.assertIn('문서번호', [r['id'] for r in bb.check(data)])
+        with self.assertRaisesRegex(ValueError, 'budget을 false'):
+            bb.check({**copy.deepcopy(SAMPLE), 'budget': False})
+        with self.assertRaisesRegex(ValueError, 'approval을 false'):
+            bb.check({**copy.deepcopy(SAMPLE), 'approval': False})
+        with self.assertRaisesRegex(ValueError, 'approval'):
+            bb.check({**data, 'approval': 'yes'})
+
+    def test_task_item_fields_have_korean_errors(self):
+        base = {'project': '사업', 'updated': '2026-03-02'}
+        for item, phrase in [
+            ({'links': [{'label': '대본', 'url': 'http://example.com'}]}, 'links.*https'),
+            ({'links': [{'label': '대본', 'url': 'https://example.com', 'type': 'audio'}]}, 'type'),
+            ({'links': '주소'}, 'links'),
+            ({'images': [{'src': '시안.gif', 'alt': '시안'}]}, 'images.*png'),
+            ({'checklist': ['']}, 'checklist'),
+            ({'checklist': [{'text': '찍기', 'done': 'yes'}]}, 'checklist'),
+            ({'note': ['메모']}, 'note'),
+            ({'status': 'finished'}, 'status'),
+        ]:
+            doc = {'id': 'a', 'title': '찍기', 'status': 'todo', **item}
+            with self.subTest(phrase=phrase), self.assertRaisesRegex(ValueError, phrase):
+                bb.check({**base, 'docs': [doc]})
+
+    def test_task_item_preview_image_is_embedded(self):
+        import base64, tempfile
+        png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=')
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp); (tmp / '시안').mkdir(); (tmp / '시안' / '첫 장면.png').write_bytes(png)
+            data = {'project': '영상', 'updated': '2026-03-02',
+                    'docs': [{'id': 'v1', 'title': '찍기', 'status': 'todo', 'images': [{'src': '시안/첫 장면.png', 'alt': '첫 장면 시안'}]}]}
+            (tmp / '보드.json').write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+            r = subprocess.run([sys.executable, str(SKILL / 'scripts' / 'build_board.py'), str(tmp / '보드.json'), '-o', str(tmp / '보드.html')],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            html = (tmp / '보드.html').read_text(encoding='utf-8')
+            self.assertIn('data:image/png;base64,iVBORw0KGgo', html)
+            self.assertNotIn('시안/첫 장면.png', html)
+            data['docs'][0]['images'][0]['src'] = '시안/없음.png'
+            (tmp / '보드.json').write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+            r = subprocess.run([sys.executable, str(SKILL / 'scripts' / 'build_board.py'), str(tmp / '보드.json'), '-o', str(tmp / '보드.html')],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn('docs의 v1', r.stderr)
+            self.assertNotIn('Traceback', r.stderr)
 
     def test_guide_rejects_unknown_answer(self):
         data = copy.deepcopy(SAMPLE)

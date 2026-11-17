@@ -29,7 +29,7 @@
     },
     {
       "name": "chilseo-docs",
-      "description": "학교 문서 스킬 5종: school-start(처음 쓸 때 준비물 확인·설치, 학교 설정 한 번만, 첫 부탁 안내), school-plan-hwpx(계획서 원고 → 한글 내부결재 양식), school-gongmun-draft(기안문 종이 모양 화면·에듀파인 복사·예산 장부·검산), school-newsletter(가정통신문 한글 파일 + 보호자용 미리보기), school-project-board(사업 하나의 필요한 문서·지금 할 일·다음 할 일·예산 장부를 한 장의 보드로, 정할 것마다 공문 캡처·원문 링크)",
+      "description": "학교 문서 스킬 5종: school-start(처음 쓸 때 준비물 확인·설치, 학교 설정 한 번만, 첫 부탁 안내), school-plan-hwpx(계획서 원고 → 한글 내부결재 양식), school-gongmun-draft(기안문 종이 모양 화면·에듀파인 복사·예산 장부·검산), school-newsletter(가정통신문 한글 파일 + 보호자용 미리보기), school-project-board(어떤 프로젝트든 정할 것·할 일 흐름·지금 할 일과 다음 할 일을 한 장의 보드로, 할 일마다 자료 링크·체크리스트, 학교 사업이면 필요한 문서·예산 장부까지)",
       "version": "0.5.0",
       "author": {
         "name": "Jongwook Yoo (칠서초등학교)"

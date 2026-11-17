@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: board-task-project-skips-office
+expected_outcome: |
+  결재 문서·예산이 없는 작업형 프로젝트로 보고 guide·ledger·budget_code·draft 없이 보드 JSON을 쓴다. 할 일마다 status를 todo로 두고, 선생님이 준 대본 주소는 해당 할 일의 links에 넣는다. build_board.py가 [fail] 없이 만들고, 출력한 지금 할 일과 다음 할 일을 그대로 전한다. 길잡이 질문(작년 계획서·예산 등)을 묻지 않고, 결재·예산 칸이 빠졌다고 알린다.

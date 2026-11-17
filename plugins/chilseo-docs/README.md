@@ -1,6 +1,6 @@
 # chilseo-docs: 학교 문서 만들기
 
-계획서·기안문·가정통신문을 학교 양식에 맞게 만들고, 사업 하나의 문서와 할 일 순서를 보드로 정리하는 스킬 네 가지에, 처음 쓸 때 길을 잡아 주는 시작하기 스킬을 더한 묶음입니다.
+계획서·기안문·가정통신문을 학교 양식에 맞게 만들고, 어떤 프로젝트든(학교 사업이면 필요한 문서까지) 할 일 순서를 보드로 정리하는 스킬 네 가지에, 처음 쓸 때 길을 잡아 주는 시작하기 스킬을 더한 묶음입니다.
 만든 뒤에는 숫자와 날짜를 스스로 검사하고, 틀린 곳이 있으면 무엇이 틀렸는지 알려 드립니다.
 
 | 스킬 | 만드는 것 | 검사하는 것 |
@@ -9,7 +9,7 @@
 | `school-plan-hwpx` | 계획서 원고 → 학교 내부결재 양식의 한글(HWPX) 파일 | 예산 산출식·합계, 요일, 시간표 학급 중복, 빈자리, 근거·목적·예산 절 |
 | `school-gongmun-draft` | 기안문 → 종이 모양 화면(제목·본문 복사 버튼, 예산 장부, 검사 결과) | 본문 체계, 관련 문서번호, 곱셈 검산, 합계, 금액 한글 표기, 요일, 편성액, 붙임 |
 | `school-newsletter` | 가정통신문 → 학교 양식의 한글 파일 + 보호자용 미리보기 화면 | 요일, 회신 기한, 빈자리, 개인정보 수집 문구를 넣을지 |
-| `school-project-board` | 사업 하나 → 한 장의 보드(필요한 문서, 지금 할 일과 다음 할 일, 부탁 문구, 예산 장부, 일정) | 품의 금액과 장부 합계, 편성액, 요일, 결재를 마친 문서의 문서번호, 지난 기한, 필요한 문서가 빠졌는지 |
+| `school-project-board` | 어떤 프로젝트든 → 한 장의 보드(정할 것, 할 일 흐름과 할 일마다 붙인 자료, 지금 할 일과 다음 할 일, 일정, 작업 기록). 학교 사업이면 필요한 문서·부탁 문구·예산 장부까지 | 요일, 지난 기한, 빈칸. 결재 문서를 쓰면 문서번호·기안문·필요한 문서가 빠졌는지, 예산을 쓰면 품의 금액과 장부 합계·편성액 |
 
 ## 들어 있는 것
 
@@ -63,7 +63,11 @@
 
 > 학예회 안내 가정통신문을 만들어 주세요. 회신서는 필요 없어요. 보호자가 휴대폰으로 볼 미리보기도 보여 주세요.
 
-**사업 보드**
+**프로젝트 보드**
+
+> 연수 실습 영상 네 편 찍는 프로젝트 보드를 만들어 주세요. 결재나 예산은 없어요.
+
+할 일마다 상태(아직·하는 중·확인 중·마침)와 지금 할 일·다음 할 일을 표시한 보드를 만들어 줍니다. 할 일을 누르면 대본·편집본 링크, 메모, 체크리스트, 시안 그림이 바로 열립니다. 자료가 없는 할 일에는 Claude에게 보낼 부탁 문구가 나옵니다. 결재 문서나 예산이 없는 프로젝트는 그 칸이 처음부터 빠집니다.
 
 > 과학 탐구 동아리 사업 보드를 만들어 주세요. 무엇부터 해야 할지 알려 주세요.
 
@@ -104,6 +108,7 @@ python3 skills/school-plan-hwpx/scripts/build.py skills/school-plan-hwpx/example
 python3 skills/school-gongmun-draft/scripts/build_gongmun.py skills/school-gongmun-draft/examples/sample_science_club.json -o 결과/기안문.html
 python3 skills/school-newsletter/scripts/build_newsletter.py skills/school-newsletter/examples/sample_museum_trip.json -o 결과/가정통신문.hwpx --preview 결과/미리보기.html
 python3 skills/school-project-board/scripts/build_board.py skills/school-project-board/examples/sample_science_club_board.json -o 결과/보드.html
+python3 skills/school-project-board/scripts/build_board.py skills/school-project-board/examples/sample_video_shoot_board.json -o 결과/작업보드.html
 for s in skills/*/; do python3 -m unittest discover -s "$s/tests"; done
 ```
 

@@ -36,7 +36,7 @@ claude plugin install chilseo-docs@chilseo-plugins
 | "○○ 운영 계획서를 학교 양식 한글 파일로 만들어 주세요" | 내부결재용 계획서(HWPX), 예산·요일 검산 | [chilseo-docs](plugins/chilseo-docs/README.md) |
 | "○○ 지출 품의 기안문을 만들어 주세요" | 에듀파인에 붙여 넣을 제목·본문, 예산 장부, 검산 결과 | chilseo-docs |
 | "○학년 ○○ 체험학습 가정통신문을 만들어 주세요" | 학교 양식 가정통신문(HWPX)과 보호자용 미리보기 | chilseo-docs |
-| "○○ 사업 보드를 만들어 주세요. 무엇부터 해야 해요?" | 필요한 문서와 지금 할 일·다음 할 일이 담긴 보드 | chilseo-docs |
+| "○○ 프로젝트 보드를 만들어 주세요. 무엇부터 해야 해요?" | 정할 것·할 일 흐름(할 일마다 자료)·지금 할 일과 다음 할 일이 담긴 보드. 학교 사업이면 필요한 문서까지 | chilseo-docs |
 | "처음이에요. 시작하기 도와주세요." | 준비물 확인·설치, 학교 설정 저장, 할 수 있는 일 안내 | chilseo-docs |
 | "우리 반 ○○ 웹 앱을 만들어 주세요" | 보기 좋고 문구가 쉬운 수업용 웹 앱(토스·KRDS 공개 원칙 참고) | [chilseo-writing](plugins/chilseo-writing/README.md) |
 | "이 사례 보고서 원고를 제 말투로 다듬어 주세요" | 비유·격언 없이 사실로 쓴 원고, 전/후 표, 남은 표현 검사 | chilseo-writing |
@@ -49,6 +49,7 @@ claude plugin install chilseo-docs@chilseo-plugins
 - "아래 내용으로 지출 품의 기안문을 만들어 주세요. 산출식과 합계도 검산해 주세요. (내용 붙여 넣기)"
 - "3학년 박물관 체험학습 가정통신문을 만들어 주세요. 참가 동의서도 붙여 주세요."
 - "과학 탐구 동아리 사업 보드를 만들어 주세요. 무엇부터 해야 할지 알려 주세요."
+- "연수 실습 영상 촬영 프로젝트 보드를 만들어 주세요. 결재나 예산은 없어요."
 - "우리 반 아침 활동 타이머 웹 앱을 만들어 주세요. 버튼 문구는 토스처럼 쉽게 써 주세요."
 - "보호자용 체험학습 신청 화면을 KRDS 디자인으로 만들어 주세요."
 
@@ -78,7 +79,7 @@ Claude Code 대신 Claude 앱(웹·데스크톱의 채팅 화면)을 쓰신다�
    - 계획서 만들기: `school-plan-hwpx.zip`
    - 기안문 만들기: `school-gongmun-draft.zip`
    - 가정통신문 만들기: `school-newsletter.zip`
-   - 사업 보드(필요한 문서와 할 일 순서): `school-project-board.zip`
+   - 프로젝트 보드(정할 것과 할 일 순서, 학교 사업이면 필요한 문서): `school-project-board.zip`
    - 웹 앱 만들기: `toss-writing.zip`, `toss-design.zip`, `krds-design.zip`, `web-assets.zip`
    - 원고·대본 다듬기: `dori-voice.zip`
    - 시작하기(`school-start`)는 Claude Code 전용이라 zip이 없습니다.

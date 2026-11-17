@@ -22,7 +22,7 @@
 - KRDS(대한민국 정부 디자인 시스템): 공공저작물, 출처 표기 후 이용.
 - 커뮤니티 스킬(모두 MIT): NariP/toss-ux-writing-skills, Ksanbal/toss-ux-writing-skill, claudianus/toss-ux-writing-skill, Ilbie/Toss-Design-Skill, elayadesign/ai-design-skills.
 - Stageshow (MIT, Copyright (c) 2026 Benji Taylor, benjitaylor/skills): 프로젝트 보드의 벤토 짜임 원칙과 kit의 모양 값(그림자, 창 틀과 신호등 크기, 숫자 굴림, 청사진 색)을 `school-project-board/assets/board.html`에 옮겨 고쳐 썼습니다. 원칙 설명은 `references/design.md`에 새로 썼습니다. React 키트·예시·앱 아이콘·브랜드 마크는 넣지 않았습니다. 라이선스 전문은 이 파일 맨 아래에 있습니다.
-- Lucide 아이콘 (ISC): 프로젝트 보드에 아이콘 다섯 개(check, circle-alert, x, file-text, minus)의 선 모양을 HTML 안에 넣었습니다. 라이선스 전문은 이 파일 맨 아래에 있습니다.
+- Lucide 아이콘 (ISC): 프로젝트 보드에 아이콘 아홉 개(check, circle-alert, x, file-text, minus, external-link, play, paperclip, list-checks)의 선 모양을 HTML 안에 넣었습니다. 라이선스 전문은 이 파일 맨 아래에 있습니다.
 
 ## 함께 쓰는 다른 도구 (이 저장소에 복사하지 않음)
 

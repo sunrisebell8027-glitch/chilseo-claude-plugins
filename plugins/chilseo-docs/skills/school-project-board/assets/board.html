@@ -5,6 +5,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Noto+Serif+KR:wght@400;700&display=swap">
 <style>
  [hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 /* 짜임은 벤토 그리드 한 장. 칸마다 같은 틀(모서리 20, 안쪽 여백 24, 제목은 위에)을 쓰고, 그림은 한 가지씩:
    길잡이 = 질문 카드 한 장과 답 단추, 정할 것 = 옅은 바탕 위에 놓인 할 일 카드, 문서 흐름 = 창(신호등은 여기 한 번) + 걸친 기안문 종이, 남은 돈 = 큰 숫자,
    예산 장부·일정·검사·기록 = 칸 아래로 흘러 나가는 패널(발치가 흐려진다).
@@ -108,6 +109,7 @@ a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outli
 .pill { display: inline-block; font-size: .75rem; font-weight: 700; line-height: 1.3; border-radius: 999px; padding: 3px 8px; white-space: nowrap; text-box: trim-both cap alphabetic; }
 .pill.done, .pill.ok { background: var(--ok-bg); color: var(--ok); }
 .pill.review, .pill.draft { background: var(--accent-soft); color: var(--accent); }
+.pill.now { background: var(--accent); color: var(--accent-ink); }
 .pill.todo { background: var(--track); color: var(--ink-soft); }
 .pill.warn { background: var(--warn-bg); color: var(--warn); }
 .pill.fail { background: var(--bad-bg); color: var(--bad); }
@@ -121,23 +123,16 @@ a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outli
 .say { margin: 0; font-size: 1.125rem; line-height: 1.45; font-weight: 400; color: var(--ink-soft); text-wrap: balance; }
 .say b { color: var(--ink); font-weight: 700; }
 
-/* 판 */
+/* 판: 보이는 칸만으로 짠다. 칸 배치(--a1 한 단, --a2 두 단, --a3 세 단)는 아래 arrange()가 정하고, 여기 값은 모든 칸이 있을 때의 기본값이다.
+   결재·예산을 쓰지 않는 프로젝트는 그 칸을 빼고 남은 칸이 빈자리 없이 채운다 */
 .bento {
-  display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: "guide" "decide" "docs" "money" "budget" "schedule" "checks" "log";
+  --a1: "guide" "decide" "docs" "money" "budget" "schedule" "checks" "log";
+  --a2: "guide guide" "decide decide" "money money" "docs docs" "budget schedule" "checks log";
+  --a3: "guide guide guide" "decide decide money" "docs docs docs" "budget schedule checks" "log log log";
+  display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); grid-template-areas: var(--a1);
 }
-@media (min-width: 640px) {
-  .bento { grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas: "guide guide" "decide decide" "money money" "docs docs" "budget schedule" "checks log"; }
-}
-@media (min-width: 960px) {
-  .bento { grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-areas: "guide guide guide" "decide decide money" "docs docs docs" "budget schedule checks" "log log log"; }
-}
-/* 예산을 쓰지 않는 사업: 남은 돈·예산 장부 칸 없이 짠다 */
-.bento.nobudget { grid-template-areas: "guide" "decide" "docs" "schedule" "checks" "log"; }
-@media (min-width: 640px) { .bento.nobudget { grid-template-areas: "guide guide" "decide decide" "docs docs" "schedule checks" "log log"; } }
-@media (min-width: 960px) { .bento.nobudget { grid-template-areas: "guide guide guide" "decide decide decide" "docs docs docs" "schedule schedule checks" "log log log"; } }
+@media (min-width: 640px) { .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: var(--a2); } }
+@media (min-width: 960px) { .bento { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: var(--a3); } }
 #guide { grid-area: guide; } #decide { grid-area: decide; } #docs { grid-area: docs; } #money { grid-area: money; } #budget { grid-area: budget; }
 #schedule { grid-area: schedule; } #checks { grid-area: checks; } #log { grid-area: log; }
 .tile { position: relative; overflow: hidden; border-radius: var(--radius-tile); padding: var(--pad); min-width: 0;
@@ -207,16 +202,17 @@ a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outli
 .task .for span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task .for svg { width: 12px; height: 12px; flex: none; }
 .task.empty { grid-template-columns: minmax(0, 1fr); font-weight: 600; }
-/* 정할 것의 근거: 공문 캡처(누르면 크게 뜬다)와 원문 링크 */
-.task .shots { display: grid; gap: 8px; margin-top: 12px; }
-.task .shot { all: unset; box-sizing: border-box; cursor: zoom-in; display: block; position: relative; width: 100%; border-radius: 8px; overflow: hidden;
+/* 정할 것의 근거와 할 일의 미리보기: 그림(누르면 크게 뜬다)과 원문 링크 */
+.shots { display: grid; gap: 8px; }
+.task .shots { margin-top: 12px; }
+.shot { all: unset; box-sizing: border-box; cursor: zoom-in; display: block; position: relative; width: 100%; border-radius: 8px; overflow: hidden;
   border: 1px solid var(--line); background: #fff; }
-.task .shot img { display: block; width: 100%; height: 120px; object-fit: cover; object-position: top left; }
-.task .shot span { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 10px; font-size: .75rem; font-weight: 600; color: var(--ink);
+.shot img { display: block; width: 100%; height: 120px; object-fit: cover; object-position: top left; }
+.shot span { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 10px; font-size: .75rem; font-weight: 600; color: var(--ink);
   background: var(--raised); border-top: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task .shot:hover span { text-decoration: underline; text-underline-offset: 3px; }
-.task .shot:active { transform: scale(.98); }
-.task .shot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.shot:hover span { text-decoration: underline; text-underline-offset: 3px; }
+.shot:active { transform: scale(.98); }
+.shot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .task .srcs { display: flex; flex-wrap: wrap; gap: 0 12px; margin: 8px -8px -12px; }
 .task .srcs a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; border-radius: 8px; font-size: .8125rem; font-weight: 600;
   color: var(--accent); text-decoration: none; }
@@ -246,6 +242,7 @@ dialog.viewer img { display: block; width: 100%; min-width: 560px; height: auto;
     radial-gradient(45% 55% at 78% 8%, var(--orb-3), transparent 70%),
     var(--canvas); }
 #docs .say { padding-right: var(--pad); }
+#docs.empty { padding: var(--pad); }
 .window { flex: 1; position: relative; background: var(--surface); border-radius: var(--radius-panel) 0 0 0; box-shadow: var(--shadow-window); min-width: 0; }
 .window-bar { display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 14.5px; background: var(--chrome); border-bottom: 1px solid var(--line); border-radius: var(--radius-panel) 0 0 0; }
 .lights { display: flex; gap: 6px; flex: none; }
@@ -296,6 +293,28 @@ dialog.viewer img { display: block; width: 100%; min-width: 560px; height: auto;
 .doc-title { display: block; margin: 2px 0 0; font-weight: 600; font-size: .9375rem; text-wrap: pretty; }
 .doc-meta { margin: 2px 0 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: .8125rem; color: var(--ink-soft); }
 .doc-meta b { font-weight: 600; color: var(--ink); }
+/* 길잡이 없는 보드: 지금 할 일은 번호 칸을 채우고, 지금·다음 표시를 붙인다 */
+.flow > li.now .dot { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+
+/* 할 일 자료: 메모 → 미리보기 그림 → 링크 → 체크리스트. 기안문이 없는 상세는 명조 대신 본문 글꼴을 쓴다 */
+.satellite.sheet .paper-head .t { font-family: var(--font); font-size: 1.0625rem; }
+.memo { margin: 0; font-size: .9375rem; line-height: 1.65; white-space: pre-line; text-wrap: pretty; }
+.sec { display: grid; gap: 8px; }
+.sec-name { margin: 0; font-size: .8125rem; font-weight: 700; color: var(--ink-soft); }
+.res { display: grid; gap: 6px; }
+.res a { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 14px; border-radius: 10px; background: var(--accent-soft);
+  color: var(--accent); font-size: .9375rem; text-decoration: none; transition: transform .15s ease, filter .15s ease; }
+.res a svg { width: 16px; height: 16px; flex: none; }
+.res a span { min-width: 0; overflow-wrap: anywhere; }
+.res a:hover span { text-decoration: underline; text-underline-offset: 3px; }
+.res a:active { transform: scale(.98); }
+.res a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.ticks { display: grid; gap: 8px; }
+.ticks li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: start; font-size: .9375rem; line-height: 1.5; }
+.ticks .box { width: 22px; height: 22px; border-radius: 6px; box-shadow: inset 0 0 0 2px var(--track); display: grid; place-items: center; }
+.ticks .box svg { width: 14px; height: 14px; }
+.ticks li.done .box { background: var(--ok-bg); color: var(--ok); box-shadow: none; }
+.ticks li.done > span:last-child { color: var(--ink-soft); }
 
 /* 기안문 종이: 머리(종류·상태, 제목) → 수신 → 본문(명조, 번호는 내어쓰기) → 복사 버튼 → 기안문 검사 */
 .paper-head { display: grid; gap: 4px; }
@@ -392,6 +411,7 @@ textarea.clip { position: absolute; left: -9999px; width: 1px; height: 1px; }
 .when .left-days { font-weight: 700; white-space: nowrap; }
 .when .left-days.soon { color: var(--warn); }
 .when li.past { opacity: .55; }
+.when li.empty-line { display: block; }
 
 /* 검사 패널 */
 .checks { display: grid; gap: 12px; }
@@ -460,7 +480,7 @@ details summary:hover { color: var(--accent); }
     <section class="tile bleed" id="docs" style="--i:1" aria-labelledby="docsHead">
       <h2 class="say" id="docsHead"></h2>
       <div class="window">
-        <div class="window-bar" aria-hidden="true"><span class="lights"><i></i><i></i><i></i></span><span class="window-title">결재 문서</span></div>
+        <div class="window-bar" aria-hidden="true"><span class="lights"><i></i><i></i><i></i></span><span class="window-title" id="windowTitle">결재 문서</span></div>
         <div class="window-body">
           <ol class="flow" id="flow"></ol>
           <div id="paperSlot"></div>
@@ -482,8 +502,8 @@ details summary:hover { color: var(--accent); }
       <div class="panel" style="--i:3">
         <div class="panel-head"><span class="code" id="code"></span></div>
         <p class="key" aria-hidden="true">
-          <span><i class="sw done"></i>결재 완료</span>
-          <span><i class="sw pending"></i>결재 전 품의</span>
+          <span><i class="sw done"></i><span id="keyDone">결재 완료</span></span>
+          <span><i class="sw pending"></i><span id="keyPending">결재 전 품의</span></span>
           <span><i class="sw left"></i>남은 돈</span>
         </p>
         <div class="lines" id="lines"></div>
@@ -529,7 +549,7 @@ function put(node, text) {
 }
 const make = (tag, text, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) put(e, text); return e; };
 const say = (node, lead, rest) => { node.textContent = ''; node.appendChild(make('b', lead)); if (rest) node.appendChild(document.createTextNode(' ' + rest)); };
-// Lucide 아이콘 (ISC): check, circle-alert, x, file-text, minus
+// Lucide 아이콘 (ISC): check, circle-alert, x, file-text, minus, external-link, play, paperclip, list-checks
 const svg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICON = {
   ok: svg('<path d="M20 6 9 17l-5-5"/>'),
@@ -538,7 +558,13 @@ const ICON = {
   dash: svg('<path d="M5 12h14"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   doc: svg('<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>'),
+  link: svg('<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'),
+  video: svg('<polygon points="6 3 20 12 6 21 6 3"/>'),
+  clip: svg('<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>'),
+  ticks: svg('<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>'),
 };
+// 결재 문서(기안문·문서번호)와 예산은 프로젝트에 그 자료가 있을 때만 켠다. 꺼져 있으면 칸도 말도 보이지 않는다
+const F = B.features, OFFICE = F.approval;
 const glyph = st => { const g = make('span', null, 'glyph ' + st); g.innerHTML = ICON[st]; return g; };
 const segments = (bar, parts, base, k) => {
   const fill = make('div', null, 'fill'); fill.style.setProperty('--k', String(k));
@@ -555,33 +581,37 @@ const checkItem = c => {
 };
 
 if (B.look === 'blueprint') document.documentElement.dataset.look = 'blueprint';
-$('eyebrow').textContent = '프로젝트 보드 · ' + B.school;
+$('eyebrow').textContent = ['프로젝트 보드', B.school].filter(Boolean).join(' · ');
 put($('title'), B.project);
 [B.period && '기간 ' + B.period, B.owner, '마지막으로 고친 날 ' + B.updated].filter(Boolean).forEach(t => $('sub').appendChild(make('span', t)));
 if (B.example) $('sub').appendChild(make('span', '예시 자료', 'tag'));
 
+// 그림 미리보기: 윗부분만 작게 두고, 누르면 화면 위에 크게 띄운다(정할 것의 근거, 할 일의 시안)
+function shots(images) {
+  const box = make('div', null, 'shots');
+  images.forEach(m => {
+    const b = make('button', null, 'shot'); b.type = 'button'; b.setAttribute('aria-label', m.alt + ' 크게 보기');
+    const im = document.createElement('img'); im.src = m.data; im.alt = ''; b.appendChild(im); b.appendChild(make('span', m.alt));
+    b.addEventListener('click', () => { $('viewerImg').src = m.data; $('viewerImg').alt = m.alt; $('viewerName').textContent = m.alt; $('viewer').showModal(); });
+    box.appendChild(b);
+  });
+  return box;
+}
+
 // 정할 것: 할 일 카드 한 장에 하나
 const byId = Object.fromEntries(B.docs.map(d => [d.id, d]));
-say($('decideHead'), B.decide.length ? `정할 것 ${B.decide.length}개.` : '정할 것.', B.decide.length ? '선생님이 직접 해 주세요.' : '지금은 없어요.');
+say($('decideHead'), B.decide.length ? `정할 것 ${B.decide.length}개.` : '정할 것.', B.decide.length ? (OFFICE ? '선생님이 직접 해 주세요.' : '직접 해 주세요.') : '지금은 없어요.');
 B.decide.forEach((x, i) => {
   const li = make('li', null, 'task');
   li.appendChild(make('span', String(i + 1), 'n'));
   const box = document.createElement('div'); put(box, x.text);
   if (x.doc && byId[x.doc]) {
-    const f = make('button', null, 'for'); f.type = 'button'; f.innerHTML = ICON.doc; f.appendChild(make('span', byId[x.doc].kind + ' 문서 보기'));
+    const f = make('button', null, 'for'); f.type = 'button'; f.innerHTML = ICON.doc;
+    f.appendChild(make('span', OFFICE ? (byId[x.doc].kind || '관련') + ' 문서 보기' : '관련 할 일 보기'));
     f.addEventListener('click', () => openDoc(x.doc));
     box.appendChild(f);
   }
-  if (x.images && x.images.length) {
-    const shots = make('div', null, 'shots');
-    x.images.forEach(m => {
-      const b = make('button', null, 'shot'); b.type = 'button'; b.setAttribute('aria-label', m.alt + ' 크게 보기');
-      const im = document.createElement('img'); im.src = m.data; im.alt = ''; b.appendChild(im); b.appendChild(make('span', m.alt));
-      b.addEventListener('click', () => { $('viewerImg').src = m.data; $('viewerImg').alt = m.alt; $('viewerName').textContent = m.alt; $('viewer').showModal(); });
-      shots.appendChild(b);
-    });
-    box.appendChild(shots);
-  }
+  if (x.images && x.images.length) box.appendChild(shots(x.images));
   if (x.links && x.links.length) {
     const srcs = make('div', null, 'srcs');
     x.links.forEach(l => { const a = make('a', l.label + ' 열기'); a.href = l.url; a.target = '_blank'; a.rel = 'noopener'; srcs.appendChild(a); });
@@ -591,8 +621,9 @@ B.decide.forEach((x, i) => {
 });
 $('viewerShut').addEventListener('click', () => $('viewer').close());
 $('viewer').addEventListener('click', e => { if (e.target === $('viewer')) $('viewer').close(); });
-if (B.no_budget) { document.querySelector('.bento').classList.add('nobudget'); $('money').hidden = true; $('budget').hidden = true; }
-if (!B.decide.length) $('decideList').appendChild(make('li', '결재 흐름이 막힌 곳이 없어요.', 'task empty'));
+if (!F.budget) { $('money').hidden = true; $('budget').hidden = true; }
+if (!B.decide.length) $('decideList').appendChild(make('li', OFFICE ? '결재 흐름이 막힌 곳이 없어요.' : '할 일 흐름대로 이어 가면 돼요.', 'task empty'));
+$('windowTitle').textContent = OFFICE ? '결재 문서' : '할 일';
 
 // 문서 흐름: 길잡이가 있으면 단계(준비 → 안내 → 운영 → 마무리)로 묶고, 필요한데 아직 없는 문서는 '만들 문서' 줄로,
 // 필요 없다고 답한 문서는 흐리게 둔다. 넓은 화면은 결재를 아직 안 마친 첫 줄을 골라 둔다.
@@ -634,7 +665,12 @@ let entries = [], picks = [], picked = -1;
 const keyOf = e => e.d ? 'doc:' + e.d.id : 'need:' + e.item.id;
 
 function flowEntries() {
-  if (!G) return B.docs.map(d => ({ d }));
+  // 길잡이가 없으면 빌더가 정한 차례대로 놓고, 묶음 이름(group 또는 단계)이 바뀔 때마다 머리줄을 넣는다
+  if (!G) {
+    const out = []; let last = '';
+    B.docs.forEach(d => { if (d.group && d.group !== last) out.push({ phase: { name: d.group, when: '' } }); last = d.group; out.push({ d }); });
+    return out;
+  }
   const out = [];
   G.phases.forEach(ph => {
     const rows = [];
@@ -659,25 +695,41 @@ function drawFlow() {
   const doneN = live.filter(finished).length, toMake = live.filter(e => e.j && !e.d && e.j.st === 'need').length;
   const guided = live.filter(e => e.j);
   const askN = guided.filter(e => e.j.st === 'ask').length;
-  const head = `결재 문서 ${live.length}개 가운데 ${doneN}개를 마쳤어요.${guided.length && askN ? ` 물어볼 문서 ${askN}개가 있어요.` : ''}${guided.length && toMake ? ` 만들 문서가 ${toMake}개 있어요.` : ''} ${guided.length ? '문서를 누르면 기안문이나 부탁 문구를 볼 수 있어요.' : '문서를 누르면 기안문을 볼 수 있어요.'}`;
-  say($('docsHead'), '문서 흐름.', live.length ? head : '아직 문서가 없어요. 계획서부터 넣어 주세요.');
+  const head = OFFICE
+    ? `결재 문서 ${live.length}개 가운데 ${doneN}개를 마쳤어요.${guided.length && askN ? ` 물어볼 문서 ${askN}개가 있어요.` : ''}${guided.length && toMake ? ` 만들 문서가 ${toMake}개 있어요.` : ''} ${guided.length ? '문서를 누르면 기안문이나 부탁 문구를 볼 수 있어요.' : '문서를 누르면 기안문을 볼 수 있어요.'}`
+    : `${live.length}개 가운데 ${doneN}개를 마쳤어요. 할 일을 누르면 관련 자료를 볼 수 있어요.`;
+  say($('docsHead'), OFFICE ? '문서 흐름.' : '할 일 흐름.', live.length ? head
+    : OFFICE ? '아직 문서가 없어요. 계획서부터 넣어 주세요.' : 'Claude에게 할 일을 알려 주면 여기에 순서대로 놓아 드려요.');
   $('flow').textContent = '';
+  // 할 일이 하나도 없으면 빈 창을 두지 않고 칸 제목만 남긴다
+  $('docs').querySelector('.window').hidden = !all.length; $('docs').classList.toggle('empty', !all.length);
   let n = 0, i = 0;
   all.forEach(e => {
     if (e.phase) {
-      const li = make('li', null, 'phase'); li.appendChild(make('b', e.phase.name)); li.appendChild(make('span', e.phase.when)); $('flow').appendChild(li); return;
+      const li = make('li', null, 'phase'); li.appendChild(make('b', e.phase.name)); if (e.phase.when) li.appendChild(make('span', e.phase.when)); $('flow').appendChild(li); return;
     }
     const at = i++;
     const li = document.createElement('li'); if (dim(e)) li.className = 'dim';
+    const mark = e.d && !G ? (e.d.id === B.now ? 'now' : e.d.id === B.next ? 'next' : '') : '';
+    if (mark) li.classList.add(mark);
     const btn = make('button', null, 'pick'); btn.type = 'button'; btn.setAttribute('aria-controls', 'paper'); btn.setAttribute('aria-expanded', 'false');
+    if (mark === 'now') btn.setAttribute('aria-current', 'step');
     const st = e.d ? e.d.status : 'need';
     const dot = make('span', null, 'dot ' + st); dot.setAttribute('aria-hidden', 'true');
     if (finished(e)) dot.innerHTML = ICON.ok; else if (dim(e)) dot.innerHTML = ICON.dash; else dot.textContent = String(++n);
     const body = make('span', null, 'doc');
     const head = make('span', null, 'doc-head');
     if (e.d) {
-      head.appendChild(make('span', e.d.kind)); head.appendChild(make('span', e.d.status_label, 'pill ' + e.d.status));
+      if (e.d.kind) head.appendChild(make('span', e.d.kind));
+      head.appendChild(make('span', e.d.status_label, 'pill ' + e.d.status));
+      if (mark) head.appendChild(make('span', mark === 'now' ? '지금 할 일' : '다음', 'pill ' + (mark === 'now' ? 'now' : 'todo')));
       if (e.d.draft) { const h = make('span', null, 'has'); h.innerHTML = ICON.doc; h.appendChild(make('span', '기안문')); head.appendChild(h); }
+      const files = e.d.links.length + e.d.images.length;
+      if (files) { const h = make('span', null, 'has'); h.innerHTML = ICON.clip; h.appendChild(make('span', `자료 ${files}개`)); head.appendChild(h); }
+      if (e.d.checklist.length) {
+        const h = make('span', null, 'has'); h.innerHTML = ICON.ticks;
+        h.appendChild(make('span', `할 것 ${e.d.checklist.filter(c => c.done).length}/${e.d.checklist.length}`)); head.appendChild(h);
+      }
       if (dim(e)) head.appendChild(make('span', '필요 없다고 답했어요', 'pill todo'));
       body.appendChild(head); body.appendChild(make('span', e.d.title, 'doc-title'));
       const meta = make('span', null, 'doc-meta');
@@ -700,6 +752,8 @@ function drawFlow() {
   else place();
 }
 function first() {
+  const now = !G && B.now ? entries.findIndex(e => e.d && e.d.id === B.now) : -1;
+  if (now >= 0) return now;
   const at = entries.findIndex(e => !finished(e) && !dim(e));
   return at >= 0 ? at : entries.length - 1;
 }
@@ -735,10 +789,11 @@ function pick(i, keep) {
   picks.forEach((li, j) => li.firstChild.setAttribute('aria-expanded', String(j === i)));
   const e = entries[i], d = e.d;
   const title = d ? d.title : e.item.name;
-  paper.textContent = ''; paper.setAttribute('aria-label', title + (d && d.draft ? ' 기안문' : ''));
+  paper.textContent = ''; paper.setAttribute('aria-label', title + (d && d.draft ? ' 기안문' : OFFICE ? '' : ' 자료'));
+  paper.classList.toggle('sheet', !OFFICE && !!d && !d.draft);
   const head = make('div', null, 'paper-head');
   const k = make('span', null, 'k');
-  if (d) { k.appendChild(make('span', d.kind)); k.appendChild(make('span', d.status_label, 'pill ' + d.status)); }
+  if (d) { if (d.kind) k.appendChild(make('span', d.kind)); k.appendChild(make('span', d.status_label, 'pill ' + d.status)); }
   else { k.appendChild(make('span', G.phases.find(p => p.id === e.item.phase).name + ' 단계')); k.appendChild(make('span', NEED_LABEL[e.j.st], 'pill ' + NEED_PILL[e.j.st])); }
   const x = make('button', null, 'close'); x.type = 'button'; x.innerHTML = ICON.close; x.appendChild(make('span', '닫기')); x.addEventListener('click', shut);
   k.appendChild(x); head.appendChild(k);
@@ -754,15 +809,19 @@ function drawNeed(e) {
     paper.appendChild(make('p', e.j.st === 'skip' ? '다시 필요해지면 길잡이에서 답을 바꿔 주세요.' : '길잡이 질문에 답하면 이 문서가 필요한지 알려 드려요.', 'note'));
     return;
   }
+  askBox(e.j.prompt, '쓰는 스킬: ' + e.item.skill);
+}
+// Claude에게 그대로 보낼 부탁 문구와 복사 단추
+function askBox(text, note) {
   const ask = make('div', null, 'ask-box');
   ask.appendChild(make('p', '이렇게 부탁해 보세요', 'ask-label'));
-  ask.appendChild(make('p', e.j.prompt, 'ask-text'));
-  ask.appendChild(make('p', '쓰는 스킬: ' + e.item.skill, 'note'));
+  ask.appendChild(make('p', text, 'ask-text'));
+  if (note) ask.appendChild(make('p', note, 'note'));
   paper.appendChild(ask);
   const act = make('div', null, 'actions');
   const b = make('button', '부탁 문구 복사하기', 'btn'); b.type = 'button'; act.appendChild(b); paper.appendChild(act);
   const toast = make('p', null, 'toast'); toast.setAttribute('role', 'status'); toast.setAttribute('aria-live', 'polite'); paper.appendChild(toast);
-  b.addEventListener('click', () => copy(e.j.prompt, toast, '부탁 문구를 복사했어요. Claude 대화창에 붙여 넣어 주세요.'));
+  b.addEventListener('click', () => copy(text, toast, '부탁 문구를 복사했어요. Claude 대화창에 붙여 넣어 주세요.'));
 }
 
 function drawDraft(d) {
@@ -798,17 +857,51 @@ function drawDraft(d) {
   paper.appendChild(box);
 }
 
+// 기안문이 없는 문서·할 일: 붙인 자료(메모 → 그림 → 링크 → 체크리스트)와 쓴 돈. 자료가 없으면 무엇을 하면 되는지 알려 준다
 function drawInfo(e) {
   const d = e.d;
   if (e.j) paper.appendChild(make('p', e.j.why, 'why'));
+  if (d.note) paper.appendChild(make('p', d.note, 'memo'));
+  if (d.images.length) paper.appendChild(shots(d.images));
+  if (d.links.length) {
+    const sec = make('div', null, 'sec');
+    sec.appendChild(make('p', '자료 열기', 'sec-name'));
+    const ul = make('ul', null, 'res');
+    d.links.filter(l => l.type === 'video').concat(d.links.filter(l => l.type !== 'video')).forEach(l => {
+      const li = document.createElement('li');
+      const a = make('a'); a.href = l.url; a.target = '_blank'; a.rel = 'noopener';
+      a.innerHTML = l.type === 'video' ? ICON.video : ICON.link; a.appendChild(make('span', l.label));
+      li.appendChild(a); ul.appendChild(li);
+    });
+    sec.appendChild(ul); paper.appendChild(sec);
+  }
+  if (d.checklist.length) {
+    const doneN = d.checklist.filter(c => c.done).length;
+    const sec = make('div', null, 'sec');
+    sec.appendChild(make('p', `할 것 ${d.checklist.length}개 가운데 ${doneN}개를 마쳤어요`, 'sec-name'));
+    const ul = make('ul', null, 'ticks');
+    d.checklist.forEach(c => {
+      const li = make('li', null, c.done ? 'done' : '');
+      const box = make('span', null, 'box'); box.setAttribute('aria-hidden', 'true'); if (c.done) box.innerHTML = ICON.ok;
+      const t = make('span'); if (c.done) t.appendChild(make('span', '마침: ', 'sr-only')); put(t, c.text);
+      li.appendChild(box); li.appendChild(t);
+      ul.appendChild(li);
+    });
+    sec.appendChild(ul); paper.appendChild(sec);
+  }
   const lines = B.ledger.flatMap(r => r.spend.filter(s => s.doc === d.id));
   if (lines.length) {
     const ul = make('ul', null, 'receipt');
     lines.forEach(s => { const li = document.createElement('li'); li.appendChild(make('span', s.name)); li.appendChild(make('span', won(s.amount))); ul.appendChild(li); });
     paper.appendChild(ul);
   }
-  paper.appendChild(make('p', d.status === 'done' ? '결재를 마친 문서예요. 본문은 에듀파인에서 볼 수 있어요.'
-    : d.status === 'todo' ? '아직 기안문을 쓰지 않았어요. 쓰면 여기에서 바로 볼 수 있어요.' : '기안문을 보드에 넣으면 여기에서 바로 볼 수 있어요.', 'note'));
+  if (OFFICE) {
+    paper.appendChild(make('p', d.status === 'done' ? '결재를 마친 문서예요. 본문은 에듀파인에서 볼 수 있어요.'
+      : d.status === 'todo' ? '아직 기안문을 쓰지 않았어요. 쓰면 여기에서 바로 볼 수 있어요.' : '기안문을 보드에 넣으면 여기에서 바로 볼 수 있어요.', 'note'));
+  } else if (!d.note && !d.images.length && !d.links.length && !d.checklist.length) {
+    paper.appendChild(make('p', '자료를 붙이면 여기에서 바로 열 수 있어요. 아래 문구를 Claude에게 보내면 찾아 붙이거나 만들어 드려요.', 'note'));
+    askBox(d.ask);
+  }
 }
 
 function copy(text, toast, done) {
@@ -918,10 +1011,14 @@ function focusGuide() { const t = document.querySelector('#guideBox .choice, #gu
 if (G) drawGuide(); else $('guide').hidden = true;
 drawFlow();
 
-// 남은 돈: 자릿수마다 0~9가 든 띠를 두고 제 숫자까지 굴린다. 막대 하나로 편성액을 나눠 보여 준다
+// 남은 돈: 자릿수마다 0~9가 든 띠를 두고 제 숫자까지 굴린다. 막대 하나로 편성액을 나눠 보여 준다.
+// 결재 문서를 쓰지 않는 프로젝트는 편성액·결재 대신 예산·쓴 돈·쓸 돈이라고 쓴다
+const W = OFFICE ? { total: '편성액', short: '편성', done: '결재 완료', pending: '결재 전', pendingKey: '결재 전 품의', empty: '예산과목과 편성액을 넣으면 장부를 보여 드려요.' }
+  : { total: '예산', short: '예산', done: '쓴 돈', pending: '쓸 돈', pendingKey: '쓸 돈', empty: '예산 줄과 금액을 넣으면 장부를 보여 드려요.' };
+$('keyDone').textContent = W.done; $('keyPending').textContent = W.pendingKey;
 const total = k => B.ledger.reduce((t, r) => t + r[k], 0);
 const left = total('left'), allocated = total('allocated'), spent = total('done'), pending = total('pending');
-say($('moneyHead'), '남은 돈.', `편성액 ${won(allocated)} 가운데`);
+say($('moneyHead'), '남은 돈.', `${W.total} ${won(allocated)} 가운데`);
 if (!B.ledger.length) {
   say($('moneyHead'), '남은 돈.', '예산 장부를 넣으면 남은 돈을 보여 드려요.');
   $('money').querySelector('.stat').hidden = true;
@@ -940,16 +1037,16 @@ if (!B.ledger.length) {
   });
   big.appendChild(make('span', left < 0 ? '원 넘음' : '원', 'unit'));
   if (left < 0) big.classList.add('over');
-  $('totalBar').setAttribute('aria-label', `편성 ${won(allocated)}, 결재 완료 ${won(spent)}, 결재 전 ${won(pending)}`);
+  $('totalBar').setAttribute('aria-label', `${W.short} ${won(allocated)}, ${W.done} ${won(spent)}, ${W.pending} ${won(pending)}`);
   segments($('totalBar'), [['done', spent], ['pending', pending]], Math.max(allocated, spent + pending), 0);
-  [['done', '결재 완료', spent], ['pending', '결재 전', pending]].forEach(([c, t, v]) => {
+  [['done', W.done, spent], ['pending', W.pending, pending]].forEach(([c, t, v]) => {
     const s = make('span'); s.appendChild(make('i', null, 'sw ' + c)); s.appendChild(document.createTextNode(t + ' ')); s.appendChild(make('b', won(v))); $('moneyKey').appendChild(s);
   });
 }
 
 // 예산 장부
 const overLines = B.ledger.filter(r => r.left < 0).length;
-say($('budgetHead'), '예산 장부.', B.ledger.length ? (overLines ? `${overLines}줄이 편성액을 넘었어요.` : `${B.ledger.length}줄 모두 편성액 안이에요.`) : '예산과목과 편성액을 넣으면 장부를 보여 드려요.');
+say($('budgetHead'), '예산 장부.', B.ledger.length ? (overLines ? `${overLines}줄이 ${W.total}을 넘었어요.` : `${B.ledger.length}줄 모두 ${W.total} 안이에요.`) : W.empty);
 $('code').textContent = B.budget_code ? '예산과목 ' + B.budget_code : (B.ledger.length ? `예산 ${B.ledger.length}줄` : '');
 if (!B.ledger.length) {
   $('budget').querySelector('.panel-head').hidden = !B.budget_code;
@@ -961,7 +1058,7 @@ B.ledger.forEach((r, i) => {
   head.appendChild(make('span', r.name));
   head.appendChild(make('span', r.left < 0 ? won(-r.left) + ' 넘었어요' : '남은 돈 ' + won(r.left), 'left' + (r.left < 0 ? ' over' : '')));
   const bar = make('div', null, 'bar'); bar.setAttribute('role', 'img');
-  bar.setAttribute('aria-label', `${r.name}: 편성 ${won(r.allocated)}, 결재 완료 ${won(r.done)}, 결재 전 ${won(r.pending)}`);
+  bar.setAttribute('aria-label', `${r.name}: ${W.short} ${won(r.allocated)}, ${W.done} ${won(r.done)}, ${W.pending} ${won(r.pending)}`);
   segments(bar, [['done', r.done], ['pending', r.pending]], Math.max(r.allocated, r.done + r.pending), i + 1);
   box.appendChild(head); box.appendChild(bar);
   $('lines').appendChild(box);
@@ -981,6 +1078,7 @@ B.schedule.forEach((s, i) => {
   t.appendChild(w); li.appendChild(cal); li.appendChild(t);
   $('when').appendChild(li);
 });
+if (!B.schedule.length) $('when').appendChild(make('li', '일정을 넣으면 날짜 순서로 보여 드려요.', 'empty-line'));
 
 // 검사 결과: 확인할 것은 펼쳐 두고, 통과한 것은 한 줄로 접는다
 const open = B.checks.filter(c => c.status !== 'ok'), passed = B.checks.filter(c => c.status === 'ok');
@@ -996,6 +1094,8 @@ if (passed.length) {
   const ul = make('ul', null, 'checks'); passed.forEach(c => ul.appendChild(checkItem(c))); d.appendChild(ul);
   box.appendChild(d);
 }
+// 결재 문서를 쓰지 않는 보드는 확인할 것이 있을 때만 검사 칸을 보여 준다
+if (!OFFICE && !open.length) $('checks').hidden = true;
 
 // 작업 기록: 최근 몇 개만 펼쳐 둔다
 say($('logHead'), '작업 기록.', B.log.length ? `최근 ${Math.min(B.log.length, LOG_SHOWN)}개예요.` : '');
@@ -1008,4 +1108,22 @@ if (B.log.length > LOG_SHOWN) {
   const ul = make('ul', null, 'log'); B.log.slice(LOG_SHOWN).forEach(l => ul.appendChild(logItem(l))); older.appendChild(ul);
   $('logBox').appendChild(older);
 }
+
+// 칸 배치: 보이는 칸만으로 한 단·두 단·세 단 배치를 만든다. 아래 줄(예산 장부·일정·검사)은 남은 칸 수에 맞춰 넓히고,
+// 하나만 남으면 작업 기록과 한 줄에 놓는다. 그때 일정은 옆 칸과 바탕이 겹치지 않게 오목한 칸으로 바꾼다
+(function arrange() {
+  const on = id => !$(id).hidden, r = (...ids) => `"${ids.join(' ')}"`;
+  const low = ['budget', 'schedule', 'checks'].filter(on);
+  const one = ['guide', 'decide', 'docs', 'money', ...low, 'log'].filter(on).map(id => r(id));
+  const two = [], three = [];
+  if (on('guide')) { two.push(r('guide', 'guide')); three.push(r('guide', 'guide', 'guide')); }
+  two.push(r('decide', 'decide'));
+  if (on('money')) { two.push(r('money', 'money')); three.push(r('decide', 'decide', 'money')); } else three.push(r('decide', 'decide', 'decide'));
+  two.push(r('docs', 'docs')); three.push(r('docs', 'docs', 'docs'));
+  if (low.length === 3) { two.push(r(low[0], low[1]), r(low[2], 'log')); three.push(r(...low), r('log', 'log', 'log')); }
+  else if (low.length === 2) { two.push(r(...low), r('log', 'log')); three.push(r(low[0], low[0], low[1]), r('log', 'log', 'log')); }
+  else { two.push(r(low[0], 'log')); three.push(r(low[0], 'log', 'log')); if (low[0] === 'schedule') $('schedule').classList.add('well'); }
+  const bento = document.querySelector('.bento');
+  bento.style.setProperty('--a1', one.join(' ')); bento.style.setProperty('--a2', two.join(' ')); bento.style.setProperty('--a3', three.join(' '));
+})();
 </script>
