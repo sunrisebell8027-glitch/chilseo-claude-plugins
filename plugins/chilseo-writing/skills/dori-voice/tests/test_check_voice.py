@@ -251,7 +251,7 @@ class VoiceTests(unittest.TestCase):
         for text in ('책을 읽었다.', '길을 통했다.', '학생이 사례를 들었다.'):
             with self.subTest(text=text):
                 self.assertEqual([], voice.check_text(text))
-        self.assertEqual([], voice.check_text('교사가 고칠 곳을 짚어 주었다.'))
+        self.assertIn('알려 주다, 제안하다', [x['hint'] for x in voice.check_text('교사가 고칠 곳을 짚어 주었다.')])
         self.assertEqual('낮음', voice.check_text('기차가 터널을 벗어났다.')[0]['confidence'])
         self.assertTrue(voice.check_text('일이 터졌다.'))
         self.assertTrue(voice.check_text('글이 올라왔다.'))
@@ -268,6 +268,63 @@ class VoiceTests(unittest.TestCase):
             for phrase in group:
                 with self.subTest(phrase=phrase):
                     self.assertTrue(voice.check_text(phrase))
+
+    def test_author_decisions(self):
+        for form in ('짚어 주다', '짚어 줬다', '짚어 준', '짚도록', '짚기', '짚는', '짚었다'):
+            with self.subTest(form=form):
+                self.assertIn('알려 주다, 제안하다', [x['hint'] for x in voice.check_text(form)])
+        for form in ('짚게 하다', '짚게 했다'):
+            with self.subTest(form=form):
+                self.assertEqual(['고르게 하다'], [x['hint'] for x in voice.check_text(form)])
+        for form in ('건네다', '건넨', '건넸다', '건네준'):
+            for context in ('피드백', '결과', '의견', '카드', '안내'):
+                with self.subTest(form=form, context=context):
+                    finding = next(x for x in voice.check_text(context + '을 ' + form) if x['kind'] == '몸·움직임')
+                    self.assertEqual(('보내다, 주다', '높음'), (finding['hint'], finding['confidence']))
+            finding = next(x for x in voice.check_text('자료를 ' + form) if x['kind'] == '몸·움직임')
+            self.assertEqual('낮음', finding['confidence'])
+        self.assertEqual('낮음', voice.check_text('결과를 확인했다. 자료를 건넸다.')[0]['confidence'])
+        for kind in ('원고', '대본'):
+            for adjective in ('신기한', '놀라운', '재미있는', '흥미로운', '이상한'):
+                for noun, particle, verb in (('일', '이', '일어나'), ('변화', '가', '생기'), ('일', '', '벌어지')):
+                    with self.subTest(kind=kind, adjective=adjective, noun=noun, verb=verb):
+                        findings = voice.check_text(f'{adjective} {noun}{particle} {verb}', kind)
+                        self.assertIn(('극적 도입', '무슨 일이 있었는지 바로 말한다'),
+                                      [(x['kind'], x['hint']) for x in findings])
+            for phrase in ('세 갈래', '목표를 잡았다', '자신의 손으로', '추이를 읽었다', '흐름을 읽었다'):
+                with self.subTest(kind=kind, phrase=phrase):
+                    self.assertTrue(voice.check_text(phrase, kind))
+        self.assertTrue(voice.check_text('오래가지 못합니다', '원고'))
+        self.assertFalse(voice.check_text('오래가지 못합니다', '대본'))
+
+    def test_goal_with_intervening_words(self):
+        for kind in ('원고', '대본'):
+            for gap in ('', ' 세', ' 세 가지로', ' 우리 반의 목표로'):
+                for ending in ('다', '았다', '은', '고'):
+                    text = '목표를' + gap + ' 잡' + ending
+                    with self.subTest(kind=kind, text=text):
+                        self.assertIn('목표를 정하다', [x['hint'] for x in voice.check_text(text, kind)])
+            for text in ('목표를 우리 반의 세 가지로 잡았다', '목표를 정했다. 방향을 잡았다', '목표를 정했다! 잡았다', '목표를 정했다? 잡았다'):
+                with self.subTest(kind=kind, text=text):
+                    self.assertFalse(any(x['text'].startswith('목표를') for x in voice.check_text(text, kind)))
+
+    def test_combined_syllable_verb_forms(self):
+        for kind in ('원고', '대본'):
+            for phrase in ('신기한 일이 일어났다', '놀라운 변화가 생겼다',
+                           '재미있는 일이 벌어졌습니다', '신기한 일이 일어납니다',
+                           '신기한 일이 일어난다', '신기한 일이 일어날',
+                           '놀라운 변화가 생깁니다', '놀라운 변화가 생긴', '놀라운 변화가 생길',
+                           '재미있는 일이 벌어집니다', '재미있는 일이 벌어진', '재미있는 일이 벌어질'):
+                with self.subTest(kind=kind, phrase=phrase):
+                    self.assertTrue(any(x['kind'] == '극적 도입' for x in voice.check_text(phrase, kind)))
+        for phrase, category in (('힘을 씁니다', '몸·움직임'), ('눈여겨 봅니다', '몸·움직임'),
+                                 ('짚어 줍니다', '몸·움직임'), ('수업이 돌아갑니다', '사물 비유'),
+                                 ('과제가 밀립니다', '사물 비유'), ('기록이 이어집니다', '사물 비유'),
+                                 ('주춤합니다', '사물 비유')):
+            with self.subTest(phrase=phrase):
+                self.assertTrue(any(x['kind'] == category for x in voice.check_text(phrase)))
+        self.assertFalse(voice.check_text('길을 통합니다.'))
+        self.assertFalse(voice.check_text('자료가 이어집니다.'))
 
     def test_sentence_context_and_boundaries(self):
         gap = '아주 자세한 설명을 여러 번 다시 살펴본 다음에 '
